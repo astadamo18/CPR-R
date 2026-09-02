@@ -30,7 +30,7 @@ for (cname in countries) {
   x <- sub$GNIPC / 1000
 
   fit <- cpr(y, x, orders = 2, kernel = "ba", bandwidth = "And91")
-  ct <- ct_test(fit$fit$residuals, fit$fit$Omega_udotv1, d = 0, m = 1, p = 2)
+  ct <- ct_test(fit, d = 0)
   ct_dec <- ifelse(ct$reject, "rejection", "no rejection")
 
   pu <- pu_test(y, x, d = 0, m = 1, orders = 2, kernel = "ba", bandwidth = "And91")

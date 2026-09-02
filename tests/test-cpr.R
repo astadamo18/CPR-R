@@ -180,6 +180,17 @@ stopifnot(isTRUE(all.equal(round(ct_cz$statistic, 3), 0.101)))
 stopifnot(!any(ct_cz$reject))
 cat("[OK] matches original MATLAB FM_OLS_panel.m / CT_test.m output (Czechia)\n")
 
+## ---- 10b. ct_test() dispatches on a fitted cpr object ----
+ct_cz_direct <- ct_test(fit_cz, d = 0)  # no manual fit$fit$residuals/Omega_udotv1 needed
+stopifnot(isTRUE(all.equal(ct_cz_direct$statistic, ct_cz$statistic)))
+stopifnot(identical(ct_cz_direct$reject, ct_cz$reject))
+# Also works on a DOLS fit (any estimator whose fit exposes residuals + Omega):
+fit_cz_dols <- cpr(cz$NOIP / 1000, cz$GNIPC / 1000, orders = 2, estimator = "DOLS",
+                    kernel = "ba", bandwidth = "And91")
+ct_cz_dols <- ct_test(fit_cz_dols, d = 0)
+stopifnot(is.finite(ct_cz_dols$statistic))
+cat("[OK] ct_test() works directly on a cpr object (FMOLS and DOLS fits)\n")
+
 ## ---- 11. pcpr(): mean-group panel estimator ----
 
 fit_mg <- pcpr(panel$NOIP / 1000, panel$GNIPC / 1000, id = panel$COUNTRY, time = panel$YEAR,

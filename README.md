@@ -37,11 +37,15 @@ further estimators and a panel version can be added later.
     applied (Wagner & Reichold 2023, Remark 5) and is not a user-facing
     option.
 - `ct_test()`: KPSS/Shin-type CT cointegration test for a fitted CPR
-  (port of `CT_test.m`). Critical values are bundled only for the
-  intercept-only, one-regressor, max-power-2 case (`d = 0, m = 1, p = 2`)
-  used in the CEE panel example below; more can be added to
-  `.ct_critval_table` in `R/ct-test.R` from the original
-  `CTcritval/*.mat` files.
+  (port of `CT_test.m`). An S3 generic: call it directly on a fitted
+  `cpr` object -- `ct_test(fit, d = 0)` -- and `uplus`/`omega`/`m`/`p` are
+  read straight off the fit (works for any estimator whose fit exposes
+  residuals and a long-run variance, currently `"FMOLS"` and `"DOLS"`);
+  `ct_test(uplus, omega, d, m, p)` still works too, for the raw
+  ingredients. Critical values are bundled only for the intercept-only,
+  one-regressor, max-power-2 case (`d = 0, m = 1, p = 2`) used in the CEE
+  panel example below; more can be added to `.ct_critval_table` in
+  `R/ct-test.R` from the original `CTcritval/*.mat` files.
 - `pcpr()`: panel cointegrating polynomial regression.
   - `type = "mg"` (mean group, default): calls [`cpr()`] once per
     cross-sectional unit -- literally the same estimation as a standalone
@@ -84,7 +88,23 @@ further estimators and a panel version can be added later.
   `R/pu-test.R`.
 - Homogeneity tests and turning-point analysis are not implemented yet.
 
-## Usage
+## Installation
+
+```r
+# install.packages("remotes")  # if you don't have it yet
+remotes::install_github("astadamo18/CPR-R", ref = "claude/new-session-9n2jmo")
+library(CPR)
+```
+
+(`devtools::install_github()` works identically -- it wraps `remotes` for
+this.) The `ref` is required because everything currently lives on that
+branch, not `main`. There is no `man/` directory yet (the roxygen-style
+comments in `R/*.R` were never run through `roxygen2`), so `library(CPR)`
+prints a harmless "No man pages found" note and `?cpr` won't return
+anything -- read the source or the examples below instead.
+
+Alternatively, without installing, source the files directly from a local
+clone (also how the test suite and example scripts run):
 
 ```r
 source_order <- c(
@@ -93,7 +113,11 @@ source_order <- c(
   "ct-test.R", "pu-test.R", "methods.R"
 )
 invisible(lapply(file.path("R", source_order), source))
+```
 
+## Usage
+
+```r
 fit <- cpr(y, x, orders = 2)   # y ~ const + x + x^2, FM-OLS, And91/Bartlett
 summary(fit)
 

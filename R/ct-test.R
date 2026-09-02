@@ -40,9 +40,29 @@ ct_critval <- function(d, m, p) {
 #' KPSS/Shin-type statistic of Wagner and co-authors for cointegrating
 #' polynomial regressions. Port of `CT_test.m`.
 #'
-#' @param uplus FM-OLS residuals (e.g. `fit$fit$residuals` / `residuals(fit)`
-#'   from [cpr()] with `estimator = "FMOLS"`), length `T`.
-#' @param omega Estimated long-run variance of the FM-OLS residuals (e.g.
+#' An S3 generic: call it either on the raw ingredients (`ct_test(uplus,
+#' omega, d, m, p, alpha)`, the [`ct_test.default()`] method) or directly on
+#' a fitted [cpr()] object (`ct_test(fit, d, alpha)`, the
+#' [`ct_test.cpr()`] method), which pulls `uplus`, `omega`, `m`, and `p`
+#' out of the fit for you.
+#'
+#' @param x Either a numeric vector of residuals (`uplus`, dispatching to
+#'   [ct_test.default()]) or a fitted [cpr()] object (dispatching to
+#'   [ct_test.cpr()]).
+#' @param ... Passed on to the method.
+#'
+#' @return A list with `statistic` (the CT test statistic), `alpha`,
+#'   `critval` (critical value per `alpha`), and `reject` (logical per
+#'   `alpha`; `TRUE` means reject the null of cointegration, i.e. evidence
+#'   *against* cointegration).
+#' @export
+ct_test <- function(x, ...) {
+  UseMethod("ct_test")
+}
+
+#' @describeIn ct_test Default method: supply the residuals and long-run
+#'   variance directly.
+#' @param omega Estimated long-run variance of the residuals in `x` (e.g.
 #'   `fit$fit$Omega_udotv1`).
 #' @param d Deterministic specification: `-1` (none), `0` (intercept), `1`
 #'   (intercept + trend). Only `0` is currently tabulated.
@@ -53,14 +73,9 @@ ct_critval <- function(d, m, p) {
 #' @param alpha Significance levels to test at; must be a subset of
 #'   `c(0.1, 0.05, 0.01)` (the levels available in the tabulated critical
 #'   values).
-#'
-#' @return A list with `statistic` (the CT test statistic), `alpha`,
-#'   `critval` (critical value per `alpha`), and `reject` (logical per
-#'   `alpha`; `TRUE` means reject the null of cointegration, i.e. evidence
-#'   *against* cointegration).
 #' @export
-ct_test <- function(uplus, omega, d, m, p, alpha = c(0.1, 0.05, 0.01)) {
-  uplus <- as.numeric(uplus)
+ct_test.default <- function(x, omega, d, m, p, alpha = c(0.1, 0.05, 0.01), ...) {
+  uplus <- as.numeric(x)
   Tn <- length(uplus)
 
   partsum <- cumsum(uplus) / sqrt(Tn)
@@ -76,4 +91,24 @@ ct_test <- function(uplus, omega, d, m, p, alpha = c(0.1, 0.05, 0.01)) {
 
   list(statistic = statistic, alpha = alpha, critval = critval,
        reject = statistic > critval)
+}
+
+#' @describeIn ct_test `cpr` method: `uplus`, `omega`, `m`, and `p` are read
+#'   straight off the fit (`x$fit$residuals`, `x$fit$Omega_udotv1`,
+#'   `x$fit$m`, and the highest power in `x$fit$powers`). `d` still has to
+#'   be supplied -- it describes the deterministic specification you chose,
+#'   which isn't uniquely recoverable from the fit. Works for any estimator
+#'   whose fit provides residuals and a long-run variance (currently
+#'   `"FMOLS"` and `"DOLS"`).
+#' @export
+ct_test.cpr <- function(x, d, alpha = c(0.1, 0.05, 0.01), ...) {
+  uplus <- x$fit$residuals
+  omega <- x$fit$Omega_udotv1
+  if (is.null(uplus) || is.null(omega)) {
+    stop("This cpr fit (estimator = '", x$estimator, "') does not provide the ",
+         "residuals/long-run variance ct_test() needs.", call. = FALSE)
+  }
+  m <- x$fit$m
+  p <- max(unlist(x$fit$powers))
+  ct_test.default(uplus, omega, d = d, m = m, p = p, alpha = alpha)
 }
