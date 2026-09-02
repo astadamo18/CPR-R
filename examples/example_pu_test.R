@@ -13,7 +13,7 @@
 
 source_order <- c(
   "lr-weights.R", "lr-var.R", "bandwidth.R", "prewhiten.R", "poly-terms.R",
-  "fmols.R", "estimators.R", "cpr.R", "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R", "methods.R"
+  "fmols.R", "dols.R", "estimators.R", "cpr.R", "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R", "methods.R"
 )
 invisible(lapply(file.path("R", source_order), source))
 
@@ -30,7 +30,7 @@ for (cname in countries) {
   x <- sub$GNIPC / 1000
 
   fit <- cpr(y, x, orders = 2, kernel = "ba", bandwidth = "And91")
-  ct <- ct_test(fit$fit$residuals, fit$fit$Omega_udotv1, d = 0, m = 1, p = 2)
+  ct <- ct_test(fit)
   ct_dec <- ifelse(ct$reject, "rejection", "no rejection")
 
   pu <- pu_test(y, x, d = 0, m = 1, orders = 2, kernel = "ba", bandwidth = "And91")

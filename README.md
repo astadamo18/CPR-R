@@ -8,11 +8,26 @@ further estimators and a panel version can be added later.
 ## Status
 
 - `cpr()`: single-equation cointegrating polynomial regression.
-  - Estimator: `"FMOLS"` (fully modified OLS) is implemented.
-    `"DOLS"`, `"MOLS"`, `"IMOLS"` are reserved and registered as
-    placeholders (see `R/estimators.R`) — adding one is a matter of writing
-    a `fit_*_cpr(y, x, orders, w, deter, kernel, bandwidth)` function and
-    plugging it into `.cpr_estimators`.
+  - Estimator: `"FMOLS"` (fully modified OLS, `R/fmols.R`) and `"DOLS"`
+    (dynamic OLS, `R/dols.R`, port of `MonitoringCPR_MatlabCode/MonitoringCPR/
+    DOLS_CPR.m` and its `GenLeadLag.m` helper) are implemented. `"MOLS"`
+    remains a placeholder (see `R/estimators.R`) — no standalone
+    single-equation MATLAB source for it was found in the original
+    toolbox, only a panel-embedded bias correction inside `PanelEKC_*.m`,
+    already ported as `pcpr(type = "pmg")`'s `beta_Mod`. `"IMOLS"` also
+    remains a placeholder, but real source exists to port later
+    (`IM-SCMPR-ExemplaryCode/im_scmpr.m` / `MonitoringCPR_MatlabCode/
+    MonitoringCPR/IMOLS_NL.m`, Vogelsang & Wagner's Integrated Modified
+    OLS). Adding a new estimator is a matter of writing a
+    `fit_*_cpr(y, x, orders, w, deter, kernel, bandwidth, n_lag, n_lead)`
+    function and plugging it into `.cpr_estimators`.
+    DOLS augments the polynomial regression with leads and lags of
+    `Delta(x)` (`n_lag`/`n_lead`, both default `0`) and gets consistency
+    from that augmentation via plain OLS, with HAC standard errors
+    afterward -- a genuinely different mechanism from FM-OLS's
+    Schur-complement correction, not a variant of it. It does not support
+    `w`, and (unlike FM-OLS) does not drop the first observation when
+    `n_lag = n_lead = 0`.
   - Bandwidth selection: `"And91"` (Andrews, 1991), `"AM92"` (Andrews &
     Monahan, 1992, VAR(1) pre-whitened), `"NW"` (Newey & West, 1994), or a
     fixed numeric bandwidth.
@@ -22,11 +37,18 @@ further estimators and a panel version can be added later.
     applied (Wagner & Reichold 2023, Remark 5) and is not a user-facing
     option.
 - `ct_test()`: KPSS/Shin-type CT cointegration test for a fitted CPR
-  (port of `CT_test.m`). Critical values are bundled only for the
-  intercept-only, one-regressor, max-power-2 case (`d = 0, m = 1, p = 2`)
-  used in the CEE panel example below; more can be added to
-  `.ct_critval_table` in `R/ct-test.R` from the original
-  `CTcritval/*.mat` files.
+  (port of `CT_test.m`). An S3 generic: call it directly on a fitted
+  `cpr` object -- `ct_test(fit)` -- and `uplus`/`omega`/`m`/`p`/`d` are all
+  read straight off the fit (`d` is inferred from `deter`: none/const-only/
+  const+trend map to `d = -1/0/1`; pass `d` explicitly to override, e.g.
+  for a custom `deter` the inference can't classify). Works for any
+  estimator whose fit exposes residuals and a long-run variance, currently
+  `"FMOLS"` and `"DOLS"`. `ct_test(uplus, omega, d, m, p)` still works too,
+  for the raw ingredients. Critical values are bundled only for the
+  intercept-only,
+  one-regressor, max-power-2 case (`d = 0, m = 1, p = 2`) used in the CEE
+  panel example below; more can be added to `.ct_critval_table` in
+  `R/ct-test.R` from the original `CTcritval/*.mat` files.
 - `pcpr()`: panel cointegrating polynomial regression.
   - `type = "mg"` (mean group, default): calls [`cpr()`] once per
     cross-sectional unit -- literally the same estimation as a standalone
@@ -69,18 +91,41 @@ further estimators and a panel version can be added later.
   `R/pu-test.R`.
 - Homogeneity tests and turning-point analysis are not implemented yet.
 
-## Usage
+## Installation
+
+```r
+# install.packages("remotes")  # if you don't have it yet
+remotes::install_github("astadamo18/CPR-R", ref = "claude/new-session-9n2jmo")
+library(CPR)
+```
+
+(`devtools::install_github()` works identically -- it wraps `remotes` for
+this.) The `ref` is required because everything currently lives on that
+branch, not `main`. There is no `man/` directory yet (the roxygen-style
+comments in `R/*.R` were never run through `roxygen2`), so `library(CPR)`
+prints a harmless "No man pages found" note and `?cpr` won't return
+anything -- read the source or the examples below instead.
+
+Alternatively, without installing, source the files directly from a local
+clone (also how the test suite and example scripts run):
 
 ```r
 source_order <- c(
   "lr-weights.R", "lr-var.R", "bandwidth.R", "prewhiten.R", "poly-terms.R",
-  "fmols.R", "estimators.R", "cpr.R", "pooled-panel.R", "pcpr.R", "ct-test.R",
-  "pu-test.R", "methods.R"
+  "fmols.R", "dols.R", "estimators.R", "cpr.R", "pooled-panel.R", "pcpr.R",
+  "ct-test.R", "pu-test.R", "methods.R"
 )
 invisible(lapply(file.path("R", source_order), source))
+```
 
+## Usage
+
+```r
 fit <- cpr(y, x, orders = 2)   # y ~ const + x + x^2, FM-OLS, And91/Bartlett
 summary(fit)
+
+fit_dols <- cpr(y, x, orders = 2, estimator = "DOLS", n_lag = 1, n_lead = 1)
+summary(fit_dols)
 
 fit_mg <- pcpr(y, x, id = country, time = year, orders = 2)   # mean-group panel version
 summary(fit_mg)
@@ -119,6 +164,12 @@ directionally consistent (negative linear term, small positive quadratic
 term) in this data, as expected since the two estimators target the same
 underlying relationship under different homogeneity assumptions.
 
+`examples/example_dols.R` compares `cpr(estimator = "DOLS")` against
+`"FMOLS"` on Czechia: with `n_lag = n_lead = 0` DOLS is plain OLS on the
+full (untruncated) sample; with leads/lags added the point estimates move
+but stay in the same neighborhood as FM-OLS (const ~13-16, GNIPC ~-1.2 to
+-1.4, GNIPC^2 ~0.013-0.017, all significant either way).
+
 ## Tests
 
 ```
@@ -128,9 +179,12 @@ Rscript tests/test-cpr.R
 Base-R sanity tests (no external package dependencies): coefficient
 recovery on simulated data, all valid kernel/bandwidth combinations,
 informative errors for invalid combinations and unimplemented estimators,
-closed-form checks on the low-level building blocks, a regression test
-pinning the CEE panel output to the original MATLAB results, checks
-that `pcpr(type = "mg")`'s per-unit fits are bit-for-bit identical to
+that DOLS with `n_lag = n_lead = 0` matches plain OLS on the full
+(untruncated) sample and that its truncation with leads/lags is exactly
+right, that DOLS rejects `w`, closed-form checks on `gen_lead_lag()` and
+the other low-level building blocks, a regression test pinning the CEE
+panel output to the original MATLAB results, checks that
+`pcpr(type = "mg")`'s per-unit fits are bit-for-bit identical to
 standalone `cpr()` calls and that it rejects unbalanced panels,
 that `pcpr(type = "pmg")` runs for oneway/twoway effects and q = 2/3 and
 rejects its unsupported cases (q outside `{2, 3}`, `w`) with clear errors,
