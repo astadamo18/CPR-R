@@ -17,35 +17,44 @@
 lr_weights <- function(Tn, kernel, band) {
   w <- numeric(Tn - 1)
   M <- band
+  Tmax <- Tn - 1L
 
+  # MATLAB's `j+1:end` silently becomes an empty range when j+1 exceeds the
+  # array length (its colon operator returns empty for reversed bounds); R's
+  # `:` instead produces a *descending* sequence, which crashes downstream
+  # indexing in lr_var(). A bandwidth from And91/NW can easily exceed T-1 for
+  # a short, persistent series (e.g. T ~ 30). Since lags >= T-1 have no data
+  # to form an autocovariance from anyway, capping `upper` at T-1 here is the
+  # mathematically correct fix (equivalent to MATLAB's empty-range no-op),
+  # not just a defensive patch.
   upper <- if (kernel == "tr") {
-    up <- min(M, Tn - 1)
+    up <- min(M, Tmax)
     if (up >= 1) w[seq_len(up)] <- 1
     up
   } else if (kernel == "ba") {
-    up <- ceiling(M) - 1
+    up <- min(ceiling(M) - 1, Tmax)
     if (up >= 1) {
       j <- seq_len(up)
       w[j] <- 1 - j / M
     }
     up
   } else if (kernel == "pa") {
-    j1_end <- floor(M / 2)
+    j1_end <- min(floor(M / 2), Tmax)
     if (j1_end >= 1) {
       j <- seq_len(j1_end)
       jj <- j / M
       w[j] <- 1 - 6 * jj^2 + 6 * jj^3
     }
-    j2_start <- j1_end + 1
-    j2_end <- floor(M)
+    j2_start <- floor(M / 2) + 1
+    j2_end <- min(floor(M), Tmax)
     if (j2_end >= j2_start) {
       j <- j2_start:j2_end
       jj <- j / M
       w[j] <- 2 * (1 - jj)^3
     }
-    ceiling(M) - 1
+    min(ceiling(M) - 1, Tmax)
   } else if (kernel == "bo") {
-    up <- ceiling(M) - 1
+    up <- min(ceiling(M) - 1, Tmax)
     if (up >= 1) {
       j <- seq_len(up)
       jj <- j / M
@@ -53,13 +62,13 @@ lr_weights <- function(Tn, kernel, band) {
     }
     up
   } else if (kernel == "da") {
-    up <- Tn - 1
+    up <- Tmax
     j <- seq_len(up)
     jj <- pi * j / M
     w[j] <- sin(jj) / jj
     up
   } else if (kernel == "qs") {
-    up <- Tn - 1
+    up <- Tmax
     sc <- 6 * pi / 5
     j <- seq_len(up)
     jj <- j / M

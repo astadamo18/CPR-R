@@ -6,7 +6,7 @@
 # load time, so fmols.R must be sourced first).
 source_order <- c(
   "lr-weights.R", "lr-var.R", "bandwidth.R", "prewhiten.R", "poly-terms.R",
-  "fmols.R", "estimators.R", "cpr.R", "pcpr.R", "ct-test.R", "pu-test.R", "methods.R"
+  "fmols.R", "estimators.R", "cpr.R", "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R", "methods.R"
 )
 invisible(lapply(file.path("R", source_order), source))
 
@@ -177,15 +177,55 @@ stopifnot(!is.null(err_bal))
 stopifnot(grepl("balanced panel", conditionMessage(err_bal)))
 cat("[OK] pcpr() rejects an unbalanced panel with a clear error\n")
 
-# type = "pmg" is a registered-but-unimplemented placeholder.
-err_pmg <- tryCatch({
+# type = "pmg": pooled panel estimator (de Jong & Wagner 2016), common
+# slope shared by all 13 countries. Run both oneway (individual fixed
+# effects) and twoway (individual + time fixed effects), both q = 2 and 3.
+for (eff in c("oneway", "twoway")) {
+  for (q in c(2, 3)) {
+    fit_pmg <- pcpr(panel$NOIP / 1000, panel$GNIPC / 1000, id = panel$COUNTRY, time = panel$YEAR,
+                     orders = q, kernel = "ba", bandwidth = "And91", type = "pmg", effects = eff)
+    stopifnot(inherits(fit_pmg, "pcpr"))
+    stopifnot(length(fit_pmg$coefficients) == q)
+    stopifnot(all(is.finite(fit_pmg$coefficients)))
+    stopifnot(all(is.finite(fit_pmg$coef_table)))
+    stopifnot(is.null(fit_pmg$unit_coefficients))  # one pooled slope, not one per unit
+    stopifnot(all(c("beta_lsdv", "beta_Mod", "beta_FM") %in% names(fit_pmg$unit_fits)))
+  }
+}
+cat("[OK] pcpr(type='pmg') runs for oneway/twoway effects and q=2/3\n")
+
+# pmg restrictions are rejected with informative errors: q outside {2,3},
+# a stationary regressor `w`, and more than one integrated regressor.
+err_pmg_q <- tryCatch({
   pcpr(panel$NOIP / 1000, panel$GNIPC / 1000, id = panel$COUNTRY, time = panel$YEAR,
-       orders = 2, type = "pmg")
+       orders = 4, type = "pmg")
   NULL
 }, error = function(e) e)
-stopifnot(!is.null(err_pmg))
-stopifnot(grepl("not implemented", conditionMessage(err_pmg)))
-cat("[OK] pcpr(type='pmg') raises a clear 'not implemented' error\n")
+stopifnot(!is.null(err_pmg_q))
+stopifnot(grepl("2 or 3", conditionMessage(err_pmg_q)))
+
+err_pmg_w <- tryCatch({
+  pcpr(panel$NOIP / 1000, panel$GNIPC / 1000, id = panel$COUNTRY, time = panel$YEAR,
+       w = rnorm(nrow(panel)), orders = 2, type = "pmg")
+  NULL
+}, error = function(e) e)
+stopifnot(!is.null(err_pmg_w))
+stopifnot(grepl("stationary regressors", conditionMessage(err_pmg_w)))
+cat("[OK] pcpr(type='pmg') rejects unsupported orders/`w` with clear errors\n")
+
+# Internal consistency: with a single unit (N=1), the "oneway" pooled model
+# reduces to a demeaned-intercept single-series FM-OLS. It should be in the
+# same ballpark as cpr() on that unit (not identical: the pooled estimator
+# does not truncate the first observation the way cpr() does), as a sanity
+# check that the port is not wildly wrong.
+cz_only <- panel[panel$COUNTRY == "Czechia", ]
+cz_only <- cz_only[order(cz_only$YEAR), ]
+fit_pmg_n1 <- pcpr(cz_only$NOIP / 1000, cz_only$GNIPC / 1000, id = cz_only$COUNTRY, time = cz_only$YEAR,
+                    orders = 2, kernel = "ba", bandwidth = "And91", type = "pmg")
+fit_cpr_n1 <- cpr(cz_only$NOIP / 1000, cz_only$GNIPC / 1000, orders = 2, kernel = "ba", bandwidth = "And91")
+stopifnot(sign(fit_pmg_n1$coefficients["x1^1"]) == sign(fit_cpr_n1$coefficients["x1^1"]))
+stopifnot(sign(fit_pmg_n1$coefficients["x1^2"]) == sign(fit_cpr_n1$coefficients["x1^2"]))
+cat("[OK] pmg with N=1 is qualitatively consistent with standalone cpr()\n")
 
 ## ---- 12. pu_test(): Phillips-Ouliaris-type PU test ----
 
