@@ -23,6 +23,7 @@ Collate:
     'prewhiten.R'
     'poly-terms.R'
     'fmols.R'
+    'dols.R'
     'estimators.R'
     'cpr.R'
     'pooled-panel.R'

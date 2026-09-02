@@ -47,7 +47,8 @@ estimate_lr_var <- function(u, kernel, bandwidth, demean = FALSE) {
 #'   `vignette` / package documentation for details. Intended to be called
 #'   through [cpr()], not directly.
 #' @keywords internal
-fit_fmols_cpr <- function(y, x, orders, w = NULL, deter, kernel, bandwidth) {
+fit_fmols_cpr <- function(y, x, orders, w = NULL, deter, kernel, bandwidth,
+                           n_lag = NULL, n_lead = NULL) {
   y <- as.matrix(y)
   x <- as.matrix(x)
   Tn0 <- nrow(x)

@@ -6,7 +6,7 @@
 # load time, so fmols.R must be sourced first).
 source_order <- c(
   "lr-weights.R", "lr-var.R", "bandwidth.R", "prewhiten.R", "poly-terms.R",
-  "fmols.R", "estimators.R", "cpr.R", "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R", "methods.R"
+  "fmols.R", "dols.R", "estimators.R", "cpr.R", "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R", "methods.R"
 )
 invisible(lapply(file.path("R", source_order), source))
 
@@ -71,7 +71,7 @@ stopifnot(grepl("not defined", conditionMessage(err)))
 cat("[OK] invalid bandwidth/kernel combination errors informatively\n")
 
 ## ---- 6. Unimplemented estimators fail with a clear, structured message ----
-for (est in c("DOLS", "MOLS", "IMOLS")) {
+for (est in c("MOLS", "IMOLS")) {
   err <- tryCatch({
     cpr(y, x, orders = 2, estimator = est)
     NULL
@@ -79,7 +79,49 @@ for (est in c("DOLS", "MOLS", "IMOLS")) {
   stopifnot(!is.null(err))
   stopifnot(grepl("not implemented", conditionMessage(err)))
 }
-cat("[OK] DOLS/MOLS/IMOLS raise clear 'not implemented' errors\n")
+cat("[OK] MOLS/IMOLS raise clear 'not implemented' errors\n")
+
+## ---- 6b. DOLS: plain OLS (n_lag = n_lead = 0) matches OLS on the same design ----
+fit_dols0 <- cpr(y, x, orders = 2, estimator = "DOLS", n_lag = 0, n_lead = 0)
+stopifnot(inherits(fit_dols0, "cpr"))
+stopifnot(all(is.finite(fit_dols0$coefficients)))
+# With no lead/lag augmentation, DOLS's beta/delta should equal plain OLS
+# on [deter, X] using the FULL (untruncated) sample -- unlike FM-OLS, DOLS
+# does not drop the first observation in this case.
+X_full <- cbind(x, x^2)
+Z_full <- cbind(1, X_full)
+b_ols_manual <- solve(crossprod(Z_full), crossprod(Z_full, y))
+stopifnot(isTRUE(all.equal(unname(fit_dols0$coefficients["const"]), unname(b_ols_manual[1]), tolerance = 1e-8)))
+stopifnot(isTRUE(all.equal(unname(fit_dols0$coefficients["x1^1"]), unname(b_ols_manual[2]), tolerance = 1e-8)))
+stopifnot(isTRUE(all.equal(unname(fit_dols0$coefficients["x1^2"]), unname(b_ols_manual[3]), tolerance = 1e-8)))
+stopifnot(fit_dols0$fit$n_obs == Tn)  # full sample, no truncation
+cat("[OK] DOLS with n_lag=n_lead=0 matches plain OLS on the full (untruncated) sample\n")
+
+## ---- 6c. DOLS with leads/lags: runs, truncates correctly, improves over naive OLS ----
+fit_dols2 <- cpr(y, x, orders = 2, estimator = "DOLS", n_lag = 2, n_lead = 2)
+stopifnot(all(is.finite(fit_dols2$coefficients)))
+stopifnot(fit_dols2$fit$n_obs == Tn - 2 - 2 - 1)  # drop 1 (differencing) + n_lag + n_lead
+cat("[OK] DOLS with leads/lags runs and truncates the sample correctly\n")
+
+## ---- 6d. DOLS does not support `w` ----
+err_dols_w <- tryCatch({
+  cpr(y, x, orders = 2, estimator = "DOLS", w = matrix(rnorm(Tn), ncol = 1))
+  NULL
+}, error = function(e) e)
+stopifnot(!is.null(err_dols_w))
+stopifnot(grepl("does not support stationary regressors", conditionMessage(err_dols_w)))
+cat("[OK] DOLS rejects `w` with a clear error\n")
+
+## ---- 6e. gen_lead_lag: closed-form check ----
+v_ll <- matrix(1:10, ncol = 1)
+ll <- gen_lead_lag(v_ll, n_lag = 1, n_lead = 1)
+# columns: [contemporaneous, lag1, lead1]
+stopifnot(identical(as.numeric(ll[, 1]), as.numeric(v_ll)))
+stopifnot(identical(as.numeric(ll[2:10, 2]), as.numeric(v_ll[1:9, 1])))  # lag1
+stopifnot(ll[1, 2] == 0)
+stopifnot(identical(as.numeric(ll[1:9, 3]), as.numeric(v_ll[2:10, 1])))  # lead1
+stopifnot(ll[10, 3] == 0)
+cat("[OK] gen_lead_lag matches the expected lag/lead alignment\n")
 
 ## ---- 7. Stationary regressor (w) and explicit trend deterministic ----
 w <- matrix(rnorm(Tn), ncol = 1)

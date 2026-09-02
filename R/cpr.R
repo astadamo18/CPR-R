@@ -42,10 +42,11 @@ make_deterministics <- function(Tn, const = TRUE, trend = FALSE) {
 #' @param deter Optional matrix of deterministic regressors. Defaults to a
 #'   constant only (via [make_deterministics()]); pass e.g.
 #'   `make_deterministics(length(y), trend = TRUE)` to add a linear trend.
-#' @param estimator Estimation method. Currently only `"FMOLS"` (fully
-#'   modified OLS) is implemented; `"DOLS"`, `"MOLS"`, `"IMOLS"` are
-#'   reserved for future extensions and currently raise an informative
-#'   error.
+#' @param estimator Estimation method: `"FMOLS"` (fully modified OLS) or
+#'   `"DOLS"` (dynamic OLS: the polynomial regression augmented with leads
+#'   and lags of `Delta(x)`, see `n_lag`/`n_lead`; does not support `w`).
+#'   `"MOLS"`, `"IMOLS"` are reserved for future extensions and currently
+#'   raise an informative error.
 #' @param bandwidth Bandwidth selection for the long-run variance estimator:
 #'   `"And91"` (Andrews, 1991; default), `"AM92"` (Andrews & Monahan, 1992,
 #'   VAR(1) pre-whitened), `"NW"` (Newey & West, 1994), or a fixed numeric
@@ -57,6 +58,11 @@ make_deterministics <- function(Tn, const = TRUE, trend = FALSE) {
 #'   (plus `"th"`, not offered here as a kernel for the LR-variance weights
 #'   themselves), and `bandwidth = "NW"` only supports `"ba"`, `"pa"`,
 #'   `"qs"`.
+#' @param n_lag,n_lead Only used when `estimator = "DOLS"`: number of
+#'   lagging / leading first differences of `x` to include as additional
+#'   (nuisance) regressors. `0, 0` (the default) means plain OLS on the
+#'   polynomial regression, with no lead/lag augmentation and, unlike
+#'   `"FMOLS"`, no dropped first observation.
 #'
 #' @details
 #' `Delta(x_t) = x_t - x_{t-1}` is always demeaned before it enters the
@@ -69,7 +75,8 @@ make_deterministics <- function(Tn, const = TRUE, trend = FALSE) {
 cpr <- function(y, x, orders, w = NULL, deter = NULL,
                  estimator = "FMOLS",
                  bandwidth = "And91",
-                 kernel = "ba") {
+                 kernel = "ba",
+                 n_lag = 0, n_lead = 0) {
 
   cl <- match.call()
 
@@ -105,7 +112,7 @@ cpr <- function(y, x, orders, w = NULL, deter = NULL,
 
   fit_fun <- .cpr_estimators[[estimator]]
   fit <- fit_fun(y = y, x = x, orders = orders, w = w, deter = deter,
-                 kernel = kernel, bandwidth = bandwidth)
+                 kernel = kernel, bandwidth = bandwidth, n_lag = n_lag, n_lead = n_lead)
 
   beta_names <- unlist(mapply(function(nm, pw) paste0(nm, "^", pw),
                                xnames, fit$powers, SIMPLIFY = FALSE))
