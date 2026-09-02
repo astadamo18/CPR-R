@@ -1,0 +1,127 @@
+# FM-OLS Harmonization: `FM_CPR.m` vs. `GroupMeanFMOLS.m`
+
+## Background
+
+Two independently developed MATLAB implementations of the same theoretical
+estimator (Fully Modified OLS for a cointegrating polynomial regression,
+single integrated regressor, quadratic specification):
+
+| | `FM_CPR.m` (→ `FM_OLS_panel.m`) | `GroupMeanFMOLS.m` (→ `MG_panel.m`) |
+|---|---|---|
+| Underlying paper | Wagner (2023, *Empirical Economics*) — time series CPR/FM-OLS | Wagner–Reichold (2023, *Econometric Reviews*) — panel group-mean FM-OLS |
+| What it estimates | A single country's own FM-OLS | Each of N countries' own FM-OLS, then averaged (`betaGM`) |
+| Deterministics | Explicit intercept column in the regression | Demeaning projector (`demean_detrend.m`) |
+
+Initially the two codes produced **different** results on the same 13-country
+CEE GNIPC→NOIP panel (e.g. Czechia's GNIPC coefficient: `-1.2211` vs. `-1.2192`).
+
+## The 4 identified technical differences
+
+| # | Difference | `FM_CPR.m` (original) | `GroupMeanFMOLS.m` |
+|---|---|---|---|
+| 1 | `And_HAC91.m` version | No `ceil()` on the bandwidth | Rounds up with `ceil()` |
+| 2 | Preliminary OLS sample size | Runs on the full T observations, truncates only at the end | Truncates to T−1 immediately, everything runs on that |
+| 3 | Demeaning of `v = Δx` before HAC | Depends only on the `deme` flag (default `deme=0` → raw `v`) | Always demeans, regardless of `deme` |
+| 4 | Summation window of the correction term | Full T sample (`Σx`, `T`) | Truncated T−1 sample |
+
+## The papers settled which direction is correct
+
+- **Wagner–Reichold, footnote 6**: *"performing FM-OLS calculations for a time series dimension ranging from t=1,...,T implicitly assumes that observations are available for t=0,...,T as the construction of ỹ⁺ᵢₜ implies that one loses the first observation."* → In the paper's own notation, `T` already refers to the **post-truncation** sample size (points 2 and 4: `GroupMeanFMOLS.m` is correct).
+- **Wagner–Reichold, Remark 5**: *"If one uses... an estimator that does not center the variables prior to autocovariance estimation, the resultant estimator will diverge due to non-zero expectation μᵢ of Δxᵢₜ."* → Demeaning `v` is **necessary** whenever the regressor has a drift (point 3: `GroupMeanFMOLS.m` is correct).
+
+**Conclusion: `FM_CPR.m` had to be aligned to `GroupMeanFMOLS.m`'s
+(paper-consistent) convention, not the other way around.**
+
+## The harmonized `FM_CPR.m` — the 4 steps
+
+1. **Truncate the sample up front.** Compute `v = diff(x)` from the full `x`,
+   then immediately set `y = y(2:end,:); x = x(2:end,:); deter =
+   deter(2:end,:);` — every subsequent computation runs on the T−1-length
+   sample.
+2. **Remove the downstream `(2:end,:)` slicing.** Since `Z`, `u_ols`, `w` are
+   already truncated, the old duplicate `Z_`/`w_` variables become
+   unnecessary.
+3. **Clean up the `varmat0`/`varmat1` block.** `J(2:end,:)` → `J` (same
+   reason).
+4. **Demean `v` before it enters the HAC estimation.**
+   ```matlab
+   v_dm = v - mean(v);
+   bandw = And_HAC91([u_ols v_dm], kern);
+   [Lr,Dr,~] = lr_var([u_ols v_dm], kern, bandw, deme);
+   ```
+   Important: in the line `yplus = y - v*Lr_vvvu` the **raw `v` stays** —
+   by the Frisch–Waugh–Lovell theorem it can be shown that this step gives
+   the same result regardless of whether `v` is demeaned or raw, because the
+   regressors (`X̃`) are already orthogonal to the constant.
+
+### Two small but real code bugs found along the way
+
+- `Astar = zeros(size(Z),1);` → **invalid call to `zeros()`**
+  (`size(Z)` returns a 2-element vector, not a scalar) → throws
+  `error: dimensions must be scalars`. Fix: `zeros(size(Z,2),1)`.
+- `Astar(1:kw,:) = (1/T)*w'*u_ols(2:end,1) - ...` — a leftover, dormant bug
+  (only triggers if `w` is non-empty).
+
+## Numerical validation
+
+The harmonized `FM_CPR.m` and the original `GroupMeanFMOLS.m` produced
+**exactly matching (to 6 decimal places)** beta estimates for all 13
+countries (e.g. Czechia: `-1.219152 / 0.013535` on both sides) — confirming
+that the two implementations are **mathematically equivalent** estimators
+that merely followed different (but internally consistent) sample-handling
+conventions.
+
+## An unexpected finding: a bug in `GroupMeanFMOLS.m`
+
+The equivalence check revealed that the original (non-harmonized)
+`GroupMeanFMOLS.m` had every country **inherit Czechia's (the first
+country in the loop) Andrews bandwidth**, instead of its own:
+
+```matlab
+% BUGGY (line 69):
+if isequal(band,'And91')
+    band = And_HAC91(...);   % overwrites the input parameter 'And91' itself!
+end
+```
+
+Since after `i=1` the variable `band` is no longer the string `'And91'`
+but a number, the `isequal(...)` check fails for every subsequent country,
+and the bandwidth is **never recomputed**. The actual, country-specific
+optimal bandwidths (which ranged from `3` to `25`) confirmed this.
+
+**Fix:** introduce a local variable `bandw_i` instead of overwriting the
+`band` input parameter — the same pattern recurs in the `corrrob==1`
+branch (lines 171–172) as well, where it only stays "dormant" because the
+main loop has already corrupted `band` before reaching it.
+
+## The `deme` parameter becomes irrelevant
+
+In the harmonized code, `deme=0` and `deme=1` give **bit-for-bit identical**
+results, because:
+- `v_dm` is already explicitly demeaned before the call (the `deme` flag's
+  additional demeaning is a no-op),
+- `u_ols` is the residual of an intercept-including regression, so it is
+  automatically ~0-mean already.
+
+This matches the original `FM_CPR.m` documentation's own comment:
+*"deme... GENERICALLY WE TAKE 0 HERE, COULD BE HARD WIRED INSIDE
+PROCEDURE"* — which is exactly what we did: we hard-wired the demeaning of
+`v` into the procedure instead of leaving it to an external flag.
+
+## What the harmonization did NOT change
+
+The `CT_test.m` inputs (`u_plus`, `Omega_udotv1`) run on a **separate HAC
+computation branch based solely on `u_plus`** — this was structurally
+untouched by the 4 steps, and automatically became consistent once both
+codes used the same (`ceil`-based) `And_HAC91.m`.
+
+## An open question discussed later (concerns a different code)
+
+In the pooled FM-OLS estimator (`PanelEKC_indiv_eff_only.m`, based on
+de Jong–Wagner 2022) we found a **similar but distinct** issue: the line
+`vt = [x(1,:); diff(x)]` assumes `x_{i0}=0`, which distorts the first
+difference for a drifting regressor (such as GNIPC). This was fixed in
+`PanelEKC_indiv_eff_only_v2.m` with a genuine `x_lag1` anchor parameter —
+this was **not** validated with the same exact-match rigor as the two
+codes above, since the pooled estimator targets a fundamentally different
+parameter (a single common `β`) than the individual/group-mean estimators.
