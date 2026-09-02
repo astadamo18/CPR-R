@@ -38,11 +38,14 @@ further estimators and a panel version can be added later.
     option.
 - `ct_test()`: KPSS/Shin-type CT cointegration test for a fitted CPR
   (port of `CT_test.m`). An S3 generic: call it directly on a fitted
-  `cpr` object -- `ct_test(fit, d = 0)` -- and `uplus`/`omega`/`m`/`p` are
-  read straight off the fit (works for any estimator whose fit exposes
-  residuals and a long-run variance, currently `"FMOLS"` and `"DOLS"`);
-  `ct_test(uplus, omega, d, m, p)` still works too, for the raw
-  ingredients. Critical values are bundled only for the intercept-only,
+  `cpr` object -- `ct_test(fit)` -- and `uplus`/`omega`/`m`/`p`/`d` are all
+  read straight off the fit (`d` is inferred from `deter`: none/const-only/
+  const+trend map to `d = -1/0/1`; pass `d` explicitly to override, e.g.
+  for a custom `deter` the inference can't classify). Works for any
+  estimator whose fit exposes residuals and a long-run variance, currently
+  `"FMOLS"` and `"DOLS"`. `ct_test(uplus, omega, d, m, p)` still works too,
+  for the raw ingredients. Critical values are bundled only for the
+  intercept-only,
   one-regressor, max-power-2 case (`d = 0, m = 1, p = 2`) used in the CEE
   panel example below; more can be added to `.ct_critval_table` in
   `R/ct-test.R` from the original `CTcritval/*.mat` files.

@@ -42,9 +42,11 @@ ct_critval <- function(d, m, p) {
 #'
 #' An S3 generic: call it either on the raw ingredients (`ct_test(uplus,
 #' omega, d, m, p, alpha)`, the [`ct_test.default()`] method) or directly on
-#' a fitted [cpr()] object (`ct_test(fit, d, alpha)`, the
-#' [`ct_test.cpr()`] method), which pulls `uplus`, `omega`, `m`, and `p`
-#' out of the fit for you.
+#' a fitted [cpr()] object (`ct_test(fit, alpha = ...)`, the
+#' [`ct_test.cpr()`] method), which pulls `uplus`, `omega`, `m`, `p`, and
+#' `d` out of the fit for you -- `d` is exactly the deterministic choice
+#' already made via `cpr(..., deter = ...)`, so there's no need to state
+#' it again unless you want to override the inference.
 #'
 #' @param x Either a numeric vector of residuals (`uplus`, dispatching to
 #'   [ct_test.default()]) or a fitted [cpr()] object (dispatching to
@@ -93,21 +95,48 @@ ct_test.default <- function(x, omega, d, m, p, alpha = c(0.1, 0.05, 0.01), ...) 
        reject = statistic > critval)
 }
 
+#' Infer CT_test.m's `d` (-1/0/1) from a fitted cpr object's `deter`
+#'
+#' Only succeeds for the standard specifications [make_deterministics()]
+#' produces: none, `"const"` only, or `"const"` + `"trend"` (in that
+#' order). Anything else (custom `deter`, unusual column names/order) has
+#' no well-defined `d` and must be passed explicitly to [ct_test.cpr()].
+#' @keywords internal
+infer_ct_d <- function(x) {
+  kd <- x$kd
+  deter_names <- names(x$coefficients)[x$kw + seq_len(kd)]
+
+  if (kd == 0) return(-1L)
+  if (kd == 1 && identical(deter_names, "const")) return(0L)
+  if (kd == 2 && identical(deter_names, c("const", "trend"))) return(1L)
+
+  stop("Cannot automatically infer `d` from this fit's deterministic ",
+       "specification (", kd, " column(s): ",
+       if (kd > 0) paste(deter_names, collapse = ", ") else "none",
+       "). `d` only has a well-defined meaning here for the standard cases ",
+       "make_deterministics() produces: none (d = -1), const only (d = 0), ",
+       "or const + trend (d = 1). Pass `d` explicitly.", call. = FALSE)
+}
+
 #' @describeIn ct_test `cpr` method: `uplus`, `omega`, `m`, and `p` are read
 #'   straight off the fit (`x$fit$residuals`, `x$fit$Omega_udotv1`,
-#'   `x$fit$m`, and the highest power in `x$fit$powers`). `d` still has to
-#'   be supplied -- it describes the deterministic specification you chose,
-#'   which isn't uniquely recoverable from the fit. Works for any estimator
+#'   `x$fit$m`, and the highest power in `x$fit$powers`). `d` defaults to
+#'   `NULL`, which infers it from the fit's own `deter` (see
+#'   [infer_ct_d()]) -- since `d` is exactly the choice you already made
+#'   via `cpr(..., deter = ...)`, there is no need to state it twice.
+#'   Pass `d` explicitly to override the inference (e.g. for a custom
+#'   `deter` the auto-detection can't classify). Works for any estimator
 #'   whose fit provides residuals and a long-run variance (currently
 #'   `"FMOLS"` and `"DOLS"`).
 #' @export
-ct_test.cpr <- function(x, d, alpha = c(0.1, 0.05, 0.01), ...) {
+ct_test.cpr <- function(x, d = NULL, alpha = c(0.1, 0.05, 0.01), ...) {
   uplus <- x$fit$residuals
   omega <- x$fit$Omega_udotv1
   if (is.null(uplus) || is.null(omega)) {
     stop("This cpr fit (estimator = '", x$estimator, "') does not provide the ",
          "residuals/long-run variance ct_test() needs.", call. = FALSE)
   }
+  if (is.null(d)) d <- infer_ct_d(x)
   m <- x$fit$m
   p <- max(unlist(x$fit$powers))
   ct_test.default(uplus, omega, d = d, m = m, p = p, alpha = alpha)

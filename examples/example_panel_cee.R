@@ -28,7 +28,7 @@ for (cname in countries) {
 
   fit <- cpr(y, x, orders = 2, kernel = "ba", bandwidth = "And91")
 
-  ct <- ct_test(fit, d = 0)
+  ct <- ct_test(fit)
   decision <- ifelse(ct$reject, "rejection", "no rejection")
 
   ct_tbl <- fit$coef_table

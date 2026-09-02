@@ -180,15 +180,35 @@ stopifnot(isTRUE(all.equal(round(ct_cz$statistic, 3), 0.101)))
 stopifnot(!any(ct_cz$reject))
 cat("[OK] matches original MATLAB FM_OLS_panel.m / CT_test.m output (Czechia)\n")
 
-## ---- 10b. ct_test() dispatches on a fitted cpr object ----
-ct_cz_direct <- ct_test(fit_cz, d = 0)  # no manual fit$fit$residuals/Omega_udotv1 needed
+## ---- 10b. ct_test() dispatches on a fitted cpr object, `d` auto-inferred ----
+ct_cz_direct <- ct_test(fit_cz)  # no manual fit$fit$residuals/Omega_udotv1/d needed
 stopifnot(isTRUE(all.equal(ct_cz_direct$statistic, ct_cz$statistic)))
 stopifnot(identical(ct_cz_direct$reject, ct_cz$reject))
+# Explicit d still overrides the inference, with an identical result here:
+ct_cz_explicit <- ct_test(fit_cz, d = 0)
+stopifnot(isTRUE(all.equal(ct_cz_explicit$statistic, ct_cz_direct$statistic)))
 # Also works on a DOLS fit (any estimator whose fit exposes residuals + Omega):
 fit_cz_dols <- cpr(cz$NOIP / 1000, cz$GNIPC / 1000, orders = 2, estimator = "DOLS",
                     kernel = "ba", bandwidth = "And91")
-ct_cz_dols <- ct_test(fit_cz_dols, d = 0)
+ct_cz_dols <- ct_test(fit_cz_dols)
 stopifnot(is.finite(ct_cz_dols$statistic))
+# A fit with a trend infers d = 1 (would 404 against our bundled d=0 table,
+# proving the inference actually changed the lookup, not just defaulted):
+fit_cz_trend <- cpr(cz$NOIP / 1000, cz$GNIPC / 1000, orders = 2,
+                     deter = make_deterministics(nrow(cz), trend = TRUE),
+                     kernel = "ba", bandwidth = "And91")
+err_d1 <- tryCatch({ ct_test(fit_cz_trend); NULL }, error = function(e) e)
+stopifnot(!is.null(err_d1))
+stopifnot(grepl("No CT critical value table", conditionMessage(err_d1)))
+# A non-standard deter (not const-only or const+trend) can't be classified
+# and asks for `d` explicitly rather than guessing:
+fit_cz_custom <- cpr(cz$NOIP / 1000, cz$GNIPC / 1000, orders = 2,
+                      deter = matrix(rnorm(nrow(cz)), ncol = 1, dimnames = list(NULL, "z")),
+                      kernel = "ba", bandwidth = "And91")
+err_ambig <- tryCatch({ ct_test(fit_cz_custom); NULL }, error = function(e) e)
+stopifnot(!is.null(err_ambig))
+stopifnot(grepl("Cannot automatically infer", conditionMessage(err_ambig)))
+cat("[OK] ct_test() infers `d` from the fit's deter (or errors clearly when it can't)\n")
 cat("[OK] ct_test() works directly on a cpr object (FMOLS and DOLS fits)\n")
 
 ## ---- 11. pcpr(): mean-group panel estimator ----
