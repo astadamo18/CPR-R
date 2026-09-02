@@ -6,7 +6,7 @@
 # load time, so fmols.R must be sourced first).
 source_order <- c(
   "lr-weights.R", "lr-var.R", "bandwidth.R", "prewhiten.R", "poly-terms.R",
-  "fmols.R", "estimators.R", "cpr.R", "methods.R"
+  "fmols.R", "estimators.R", "cpr.R", "ct-test.R", "methods.R"
 )
 invisible(lapply(file.path("R", source_order), source))
 
@@ -120,5 +120,22 @@ stopifnot(isTRUE(all.equal(cv[1], length(xx))))
 stopifnot(isTRUE(all.equal(cv[2], 2 * sum(xx))))
 
 cat("[OK] low-level building blocks match known closed forms\n")
+
+## ---- 10. Regression test against the original MATLAB FM_OLS_panel.m /
+## CT_test.m output (deJongWagner2022 CEE panel: NOIP ~ GNIPC + GNIPC^2) ----
+panel <- read.csv("inst/extdata/cee_panel.csv", stringsAsFactors = FALSE)
+cz <- panel[panel$COUNTRY == "Czechia", ]
+cz <- cz[order(cz$YEAR), ]
+fit_cz <- cpr(cz$NOIP / 1000, cz$GNIPC / 1000, orders = 2, kernel = "ba", bandwidth = "And91")
+ct_cz <- ct_test(fit_cz$fit$residuals, fit_cz$fit$Omega_udotv1, d = 0, m = 1, p = 2)
+
+# Reference values from the original MATLAB output (screenshot / FM_OLS_panel.m):
+# const=13.327 (p=0.000), GNIPC=-1.219 (p=0.000), GNIPC^2=0.014 (p=0.000), CT=0.101, no rejection at 10/5/1%.
+stopifnot(isTRUE(all.equal(round(fit_cz$coef_table["const", "Estimate"], 3), 13.327)))
+stopifnot(isTRUE(all.equal(round(fit_cz$coef_table["x1^1", "Estimate"], 3), -1.219)))
+stopifnot(isTRUE(all.equal(round(fit_cz$coef_table["x1^2", "Estimate"], 3), 0.014)))
+stopifnot(isTRUE(all.equal(round(ct_cz$statistic, 3), 0.101)))
+stopifnot(!any(ct_cz$reject))
+cat("[OK] matches original MATLAB FM_OLS_panel.m / CT_test.m output (Czechia)\n")
 
 cat("\nAll tests passed.\n")

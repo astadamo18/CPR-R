@@ -1,4 +1,5 @@
 export(cpr)
+export(ct_test)
 export(make_deterministics)
 
 S3method(print, cpr)
