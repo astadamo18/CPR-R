@@ -34,16 +34,29 @@ further estimators and a panel version can be added later.
     unit-specific coefficients (Pesaran & Smith, 1995, mean-group
     estimator and between-unit inference). `object$unit_fits` holds the
     individual `"cpr"` objects.
-  - `type = "pmg"` (panel / pooled mean group, common slope across units)
-    is registered as a placeholder (see `.pcpr_types` in `R/pcpr.R`) and
-    currently raises an informative error.
+  - `type = "pmg"` (pooled panel, de Jong & Wagner 2016; port of
+    `deJongWagner2022/PanelEKC_indiv_eff_only.m` and `PanelEKC_two_eff.m`):
+    a genuinely different estimator from `"mg"` -- a single common slope
+    shared by all units (removed via a within/LSDV transformation,
+    `effects = "oneway"` for individual fixed effects only or `"twoway"`
+    for individual + time fixed effects), with per-unit long-run variances
+    pooled (averaged) into one bias correction applied uniformly. Produces
+    three point estimates (`beta_lsdv`, `beta_Mod`, `beta_FM`; the
+    coefficient table reports `beta_FM`) and three VCV matrices, in
+    `object$unit_fits`. See the file-level comment in `R/pooled-panel.R`
+    for the full derivation. Restricted to a single integrated regressor
+    with `orders` exactly `2` or `3` (the theoretical bias-correction
+    matrices are only tabulated for those cases in the original source),
+    and does not support `w`. Unlike `cpr()`/`"mg"`, it does not drop the
+    first time observation.
   - Requires a **balanced panel** (every unit observed at the same set of
     time points): this guarantees the long-run variance for every unit's
     model is estimated over the same number of time points, so units stay
-    comparable before being averaged. The auto-selected bandwidth itself
-    is still allowed to differ across units under `type = "mg"` -- that is
-    the point of allowing full slope heterogeneity; only the sample length
-    feeding into it is held fixed.
+    comparable before being averaged or pooled. The auto-selected
+    bandwidth itself is still allowed to differ across units -- that is
+    the point of allowing (`"mg"`) or accounting for (`"pmg"`, per-unit
+    Omega_i) heterogeneity; only the sample length feeding into it is held
+    fixed.
 - `pu_test()`: Phillips-Ouliaris-type PU cointegration test (port of
   `PU_test.m`). Note this tests the *opposite* null from `ct_test()` (PU:
   H0 = no cointegration; CT: H0 = cointegration), operates directly on the
@@ -61,7 +74,8 @@ further estimators and a panel version can be added later.
 ```r
 source_order <- c(
   "lr-weights.R", "lr-var.R", "bandwidth.R", "prewhiten.R", "poly-terms.R",
-  "fmols.R", "estimators.R", "cpr.R", "pcpr.R", "ct-test.R", "pu-test.R", "methods.R"
+  "fmols.R", "estimators.R", "cpr.R", "pooled-panel.R", "pcpr.R", "ct-test.R",
+  "pu-test.R", "methods.R"
 )
 invisible(lapply(file.path("R", source_order), source))
 
@@ -70,6 +84,9 @@ summary(fit)
 
 fit_mg <- pcpr(y, x, id = country, time = year, orders = 2)   # mean-group panel version
 summary(fit_mg)
+
+fit_pmg <- pcpr(y, x, id = country, time = year, orders = 2, type = "pmg")   # pooled, common slope
+summary(fit_pmg)
 ```
 
 See `examples/example_cpr.R` for a fuller `cpr()` walkthrough (trend
@@ -95,6 +112,13 @@ all 13 CEE countries. In this data, CT never rejects for any country
 inconclusive-but-not-contradictory joint outcome in a short (T = 28)
 panel, since the two tests have opposite nulls.
 
+`examples/example_pcpr_pmg.R` fits the pooled panel model (`type = "pmg"`)
+on the same CEE panel, both `oneway` and `twoway`, and compares its
+(single, common) slope against `pcpr(type = "mg")`'s group-mean slope --
+directionally consistent (negative linear term, small positive quadratic
+term) in this data, as expected since the two estimators target the same
+underlying relationship under different homogeneity assumptions.
+
 ## Tests
 
 ```
@@ -107,6 +131,25 @@ informative errors for invalid combinations and unimplemented estimators,
 closed-form checks on the low-level building blocks, a regression test
 pinning the CEE panel output to the original MATLAB results, checks
 that `pcpr(type = "mg")`'s per-unit fits are bit-for-bit identical to
-standalone `cpr()` calls, that it rejects unbalanced panels, that
-`type = "pmg"` fails clearly as not yet implemented, and that `pu_test()`'s
-bundled critical values match the original `PUcritval/*.mat` table.
+standalone `cpr()` calls and that it rejects unbalanced panels,
+that `pcpr(type = "pmg")` runs for oneway/twoway effects and q = 2/3 and
+rejects its unsupported cases (q outside `{2, 3}`, `w`) with clear errors,
+a qualitative consistency check between `pmg` (N=1) and standalone `cpr()`,
+and that `pu_test()`'s bundled critical values match the original
+`PUcritval/*.mat` table.
+
+### A cross-platform bug this port found and fixed
+
+`lr_weights()`/`lr_var()` had a latent bug inherited from a MATLAB-to-R
+translation subtlety: MATLAB's colon operator returns an *empty* range for
+reversed bounds (e.g. `76:28` is `[]`), so an auto-selected bandwidth
+exceeding `T-1` is harmless there -- out-of-range lags just contribute
+nothing. R's `:` instead returns a *descending* sequence (`76:28` is
+`76, 75, ..., 28`), which crashed downstream indexing in `lr_var()`. This
+surfaces whenever Andrews (1991) picks a bandwidth larger than `T-1`,
+which happens easily for a short, persistent series (it did for Hungary,
+Belarus, and Ukraine with T=28 while building `pcpr(type = "pmg")`).
+Fixed by capping the weight vector's `upper` index at `T-1` in
+`lr_weights()` for every kernel (mathematically the correct fix, not just
+a defensive patch: lags beyond `T-1` have no data to form an
+autocovariance from). Covered by the `pmg` tests above.

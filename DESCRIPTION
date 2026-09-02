@@ -25,6 +25,7 @@ Collate:
     'fmols.R'
     'estimators.R'
     'cpr.R'
+    'pooled-panel.R'
     'pcpr.R'
     'ct-test.R'
     'pu-test.R'

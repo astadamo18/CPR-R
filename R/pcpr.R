@@ -10,8 +10,9 @@
 # so unit-level results are guaranteed identical to calling cpr() on that
 # unit by hand.
 #
-# type = "pmg" (panel / pooled mean group, common slope across units) is
-# registered as a placeholder for now; see .pcpr_types below.
+# type = "pmg" (pooled panel, common slope across units, de Jong & Wagner
+#2016) is a genuinely different estimator -- see R/pooled-panel.R for the
+# derivation -- registered here the same way via .pcpr_types.
 #
 # Consistency rule: pcpr() requires a *balanced* panel (every unit observed
 # at the same set of time points). This guarantees that the long-run
@@ -24,7 +25,7 @@
 # `bandwidth` applies identically to all units either way.
 
 fit_mg_pcpr <- function(y_list, x_list, orders, w_list, deter_list,
-                         estimator, bandwidth, kernel, unit_names) {
+                         estimator, bandwidth, kernel, unit_names, effects = NULL) {
   N <- length(y_list)
   fits <- vector("list", N)
   names(fits) <- unit_names
@@ -61,14 +62,6 @@ fit_mg_pcpr <- function(y_list, x_list, orders, w_list, deter_list,
   list(fits = fits, unit_coefficients = B, coefficients = betaMG, se = sqrt(varMG))
 }
 
-fit_pmg_pcpr <- function(...) {
-  stop("The 'pmg' (panel / pooled mean group) type is not implemented yet. ",
-       "pcpr()'s type interface is a registry of functions with signature ",
-       "(y_list, x_list, orders, w_list, deter_list, estimator, bandwidth, kernel, ",
-       "unit_names); 'pmg' can be added as a new entry in `.pcpr_types` without ",
-       "changing pcpr() itself. Only 'mg' is available for now.", call. = FALSE)
-}
-
 .pcpr_types <- list(MG = fit_mg_pcpr, PMG = fit_pmg_pcpr)
 
 #' Fit a panel cointegrating polynomial regression (panel CPR)
@@ -86,19 +79,29 @@ fit_pmg_pcpr <- function(...) {
 #'   supplied, must be stacked long-format like `y`/`x`.
 #' @param type Panel estimator type. `"mg"` (mean group; default): average
 #'   of N unit-specific [cpr()] fits, with Pesaran & Smith (1995) between-unit
-#'   inference. `"pmg"` (panel / pooled mean group, common slope across
-#'   units) is reserved for future use and currently raises an informative
-#'   error.
+#'   inference; allows full slope heterogeneity across units. `"pmg"`
+#'   (pooled panel, de Jong & Wagner 2016): a single common slope shared by
+#'   all units, with per-unit long-run variances pooled into one bias
+#'   correction (see `R/pooled-panel.R`). `"pmg"` requires a single
+#'   integrated regressor (`ncol(x) == 1`), `orders` a single integer `2`
+#'   or `3` (not a list or vector), and does not support `w`.
+#' @param effects Only used when `type = "pmg"`: `"oneway"` (individual
+#'   fixed effects only; default) or `"twoway"` (individual + time fixed
+#'   effects). Ignored for `type = "mg"`.
 #'
 #' @return An object of class `"pcpr"`, with `print()` and `summary()`
-#'   methods. `object$unit_fits` holds the individual per-unit `"cpr"`
-#'   objects (identical to calling [cpr()] on that unit directly), and
-#'   `object$unit_coefficients` the matrix of unit-specific coefficients
-#'   that were averaged.
+#'   methods. For `type = "mg"`, `object$unit_fits` holds the individual
+#'   per-unit `"cpr"` objects (identical to calling [cpr()] on that unit
+#'   directly) and `object$unit_coefficients` the matrix of unit-specific
+#'   coefficients that were averaged. For `type = "pmg"`,
+#'   `object$unit_fits` holds the single pooled-model fit (with
+#'   `beta_lsdv`, `beta_Mod`, `beta_FM`, the three VCV matrices, and
+#'   per-unit diagnostics in `$unit_info`), and `object$unit_coefficients`
+#'   is `NULL` (there is only one, pooled, slope).
 #' @export
 pcpr <- function(y, x, id, time = NULL, orders, w = NULL, deter = NULL,
                   estimator = "FMOLS", bandwidth = "And91", kernel = "ba",
-                  type = "mg") {
+                  type = "mg", effects = "oneway") {
 
   cl <- match.call()
 
@@ -158,9 +161,11 @@ pcpr <- function(y, x, id, time = NULL, orders, w = NULL, deter = NULL,
   }
 
   type <- match.arg(toupper(type), names(.pcpr_types))
+  effects <- match.arg(effects, c("oneway", "twoway"))
   fit_fun <- .pcpr_types[[type]]
   fit <- fit_fun(y_list, x_list, orders = orders, w_list = w_list, deter_list = deter_list,
-                 estimator = estimator, bandwidth = bandwidth, kernel = kernel, unit_names = units)
+                 estimator = estimator, bandwidth = bandwidth, kernel = kernel, unit_names = units,
+                 effects = effects)
 
   tval <- fit$coefficients / fit$se
   pval <- 2 * stats::pnorm(-abs(tval))
