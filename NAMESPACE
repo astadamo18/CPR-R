@@ -2,6 +2,7 @@ export(cpr)
 export(ct_test)
 export(make_deterministics)
 export(pcpr)
+export(pu_test)
 
 S3method(print, cpr)
 S3method(summary, cpr)

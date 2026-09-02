@@ -27,4 +27,5 @@ Collate:
     'cpr.R'
     'pcpr.R'
     'ct-test.R'
+    'pu-test.R'
     'methods.R'

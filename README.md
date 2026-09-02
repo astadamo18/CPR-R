@@ -44,15 +44,24 @@ further estimators and a panel version can be added later.
     is still allowed to differ across units under `type = "mg"` -- that is
     the point of allowing full slope heterogeneity; only the sample length
     feeding into it is held fixed.
-- The PU test, homogeneity tests, and turning-point analysis are not
-  implemented yet.
+- `pu_test()`: Phillips-Ouliaris-type PU cointegration test (port of
+  `PU_test.m`). Note this tests the *opposite* null from `ct_test()` (PU:
+  H0 = no cointegration; CT: H0 = cointegration), operates directly on the
+  raw `y`/`x` series rather than a fitted `cpr()` object's residuals, and
+  is a genuinely different statistic (a VAR(1)-based long-run-variance
+  ratio, not a KPSS-type partial-sum statistic) -- so its results
+  shouldn't be expected to mirror `ct_test()`'s automatically. Same
+  critical-value bundling approach and caveat as `ct_test()`: only
+  `d = 0, m = 1, p = 2` is available so far, in `.pu_critval_table` in
+  `R/pu-test.R`.
+- Homogeneity tests and turning-point analysis are not implemented yet.
 
 ## Usage
 
 ```r
 source_order <- c(
   "lr-weights.R", "lr-var.R", "bandwidth.R", "prewhiten.R", "poly-terms.R",
-  "fmols.R", "estimators.R", "cpr.R", "pcpr.R", "ct-test.R", "methods.R"
+  "fmols.R", "estimators.R", "cpr.R", "pcpr.R", "ct-test.R", "pu-test.R", "methods.R"
 )
 invisible(lapply(file.path("R", source_order), source))
 
@@ -79,6 +88,13 @@ including the CT test decisions at the 10%/5%/1% levels.
 group-mean coefficient across all 13 countries alongside the per-country
 estimates that were averaged.
 
+`examples/example_pu_test.R` runs `pu_test()` alongside `ct_test()` for
+all 13 CEE countries. In this data, CT never rejects for any country
+(consistent with cointegration) while PU rejects only for Romania
+(consistent with *no* cointegration for the rest) -- the standard
+inconclusive-but-not-contradictory joint outcome in a short (T = 28)
+panel, since the two tests have opposite nulls.
+
 ## Tests
 
 ```
@@ -89,7 +105,8 @@ Base-R sanity tests (no external package dependencies): coefficient
 recovery on simulated data, all valid kernel/bandwidth combinations,
 informative errors for invalid combinations and unimplemented estimators,
 closed-form checks on the low-level building blocks, a regression test
-pinning the CEE panel output to the original MATLAB results, and checks
+pinning the CEE panel output to the original MATLAB results, checks
 that `pcpr(type = "mg")`'s per-unit fits are bit-for-bit identical to
-standalone `cpr()` calls, that it rejects unbalanced panels, and that
-`type = "pmg"` fails clearly as not yet implemented.
+standalone `cpr()` calls, that it rejects unbalanced panels, that
+`type = "pmg"` fails clearly as not yet implemented, and that `pu_test()`'s
+bundled critical values match the original `PUcritval/*.mat` table.
