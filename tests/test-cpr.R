@@ -6,7 +6,7 @@
 # load time, so fmols.R must be sourced first).
 source_order <- c(
   "lr-weights.R", "lr-var.R", "bandwidth.R", "prewhiten.R", "poly-terms.R",
-  "fmols.R", "estimators.R", "cpr.R", "pcpr.R", "ct-test.R", "methods.R"
+  "fmols.R", "estimators.R", "cpr.R", "pcpr.R", "ct-test.R", "pu-test.R", "methods.R"
 )
 invisible(lapply(file.path("R", source_order), source))
 
@@ -186,5 +186,30 @@ err_pmg <- tryCatch({
 stopifnot(!is.null(err_pmg))
 stopifnot(grepl("not implemented", conditionMessage(err_pmg)))
 cat("[OK] pcpr(type='pmg') raises a clear 'not implemented' error\n")
+
+## ---- 12. pu_test(): Phillips-Ouliaris-type PU test ----
+
+cz <- panel[panel$COUNTRY == "Czechia", ]
+cz <- cz[order(cz$YEAR), ]
+pu_cz <- pu_test(cz$NOIP / 1000, cz$GNIPC / 1000, d = 0, m = 1, orders = 2,
+                  kernel = "ba", bandwidth = "And91")
+stopifnot(is.finite(pu_cz$statistic))
+stopifnot(length(pu_cz$reject) == 3)
+cat("[OK] pu_test() runs and returns a finite statistic\n")
+
+# Bundled critical values are the genuine ones extracted from the original
+# PUcritval/PU_d_0_m_1_p_2.mat (not invented): spot-check the 5% (95th
+# percentile) critical value used for decisions.
+stopifnot(isTRUE(all.equal(pu_cz$critval[2], 37.87475517642149)))
+cat("[OK] PU critical values match the original PUcritval/*.mat table\n")
+
+# Missing critical value table -> informative error.
+err_pu <- tryCatch({
+  pu_test(cz$NOIP / 1000, cz$GNIPC / 1000, d = 1, m = 1, orders = 2, kernel = "ba", bandwidth = "And91")
+  NULL
+}, error = function(e) e)
+stopifnot(!is.null(err_pu))
+stopifnot(grepl("No PU critical value table", conditionMessage(err_pu)))
+cat("[OK] pu_test() errors informatively for an untabulated (d, m, p)\n")
 
 cat("\nAll tests passed.\n")
