@@ -6,7 +6,7 @@
 # load time, so fmols.R must be sourced first).
 source_order <- c(
   "lr-weights.R", "lr-var.R", "bandwidth.R", "prewhiten.R", "poly-terms.R",
-  "fmols.R", "estimators.R", "cpr.R", "ct-test.R", "methods.R"
+  "fmols.R", "estimators.R", "cpr.R", "pcpr.R", "ct-test.R", "methods.R"
 )
 invisible(lapply(file.path("R", source_order), source))
 
@@ -137,5 +137,54 @@ stopifnot(isTRUE(all.equal(round(fit_cz$coef_table["x1^2", "Estimate"], 3), 0.01
 stopifnot(isTRUE(all.equal(round(ct_cz$statistic, 3), 0.101)))
 stopifnot(!any(ct_cz$reject))
 cat("[OK] matches original MATLAB FM_OLS_panel.m / CT_test.m output (Czechia)\n")
+
+## ---- 11. pcpr(): mean-group panel estimator ----
+
+fit_mg <- pcpr(panel$NOIP / 1000, panel$GNIPC / 1000, id = panel$COUNTRY, time = panel$YEAR,
+               orders = 2, kernel = "ba", bandwidth = "And91", type = "mg")
+stopifnot(inherits(fit_mg, "pcpr"))
+stopifnot(fit_mg$n_units == 13L)
+stopifnot(fit_mg$n_time == 28L)
+
+# Design contract: the per-unit estimation inside pcpr(mg) must be *identical*
+# to calling cpr() on that unit directly (same function, not a parallel
+# reimplementation) -- checked here bit-for-bit for two units.
+for (cname in c("Czechia", "Slovenia")) {
+  sub <- panel[panel$COUNTRY == cname, ]
+  sub <- sub[order(sub$YEAR), ]
+  fit_solo <- cpr(sub$NOIP / 1000, sub$GNIPC / 1000, orders = 2, kernel = "ba", bandwidth = "And91")
+  stopifnot(identical(fit_solo$coefficients, fit_mg$unit_fits[[cname]]$coefficients))
+}
+cat("[OK] pcpr(type='mg') unit-level fits are identical to standalone cpr() calls\n")
+
+# Group-mean coefficient is exactly the column mean of the unit coefficients.
+stopifnot(isTRUE(all.equal(unname(fit_mg$coefficients), unname(colMeans(fit_mg$unit_coefficients)))))
+cat("[OK] group-mean coefficient equals the mean of the unit-specific estimates\n")
+
+# print/summary work.
+out3 <- capture.output(print(summary(fit_mg)))
+stopifnot(any(grepl("Group-mean coefficients", out3)))
+cat("[OK] pcpr print/summary methods work\n")
+
+# Unbalanced panel is rejected with an informative error.
+panel_unbalanced <- panel[!(panel$COUNTRY == "Czechia" & panel$YEAR == max(panel$YEAR)), ]
+err_bal <- tryCatch({
+  pcpr(panel_unbalanced$NOIP / 1000, panel_unbalanced$GNIPC / 1000,
+       id = panel_unbalanced$COUNTRY, time = panel_unbalanced$YEAR, orders = 2)
+  NULL
+}, error = function(e) e)
+stopifnot(!is.null(err_bal))
+stopifnot(grepl("balanced panel", conditionMessage(err_bal)))
+cat("[OK] pcpr() rejects an unbalanced panel with a clear error\n")
+
+# type = "pmg" is a registered-but-unimplemented placeholder.
+err_pmg <- tryCatch({
+  pcpr(panel$NOIP / 1000, panel$GNIPC / 1000, id = panel$COUNTRY, time = panel$YEAR,
+       orders = 2, type = "pmg")
+  NULL
+}, error = function(e) e)
+stopifnot(!is.null(err_pmg))
+stopifnot(grepl("not implemented", conditionMessage(err_pmg)))
+cat("[OK] pcpr(type='pmg') raises a clear 'not implemented' error\n")
 
 cat("\nAll tests passed.\n")

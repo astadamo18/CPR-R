@@ -25,5 +25,6 @@ Collate:
     'fmols.R'
     'estimators.R'
     'cpr.R'
+    'pcpr.R'
     'ct-test.R'
     'methods.R'

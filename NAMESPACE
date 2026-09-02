@@ -1,6 +1,7 @@
 export(cpr)
 export(ct_test)
 export(make_deterministics)
+export(pcpr)
 
 S3method(print, cpr)
 S3method(summary, cpr)
@@ -8,6 +9,10 @@ S3method(print, summary.cpr)
 S3method(coef, cpr)
 S3method(fitted, cpr)
 S3method(residuals, cpr)
+S3method(print, pcpr)
+S3method(summary, pcpr)
+S3method(print, summary.pcpr)
+S3method(coef, pcpr)
 
 importFrom(stats, pnorm)
 importFrom(stats, printCoefmat)
