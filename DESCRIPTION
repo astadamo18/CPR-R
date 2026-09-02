@@ -1,0 +1,30 @@
+Package: CPR
+Type: Package
+Title: Cointegrating Polynomial Regressions
+Version: 0.1.0
+Authors@R: person("CPR-R", role = c("aut", "cre"), email = "astadamo18@gmail.com")
+Description: Estimation and inference for cointegrating polynomial regressions
+    (CPR), following Wagner and co-authors (e.g. Wagner; Wagner & Reichold;
+    de Jong & Wagner; Veldhuis & Wagner). Provides a fully modified OLS
+    (FM-OLS) estimator for a single cointegrating polynomial regression, with
+    a choice of kernels and bandwidth selectors for long-run variance
+    estimation, and an extensible interface for adding further estimators
+    (DOLS, MOLS, IMOLS) and a panel version later on.
+License: MIT
+Encoding: UTF-8
+RoxygenNote: 7.3.1
+Imports: stats
+Suggests: testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Collate:
+    'lr-weights.R'
+    'lr-var.R'
+    'bandwidth.R'
+    'prewhiten.R'
+    'poly-terms.R'
+    'fmols.R'
+    'estimators.R'
+    'cpr.R'
+    'pcpr.R'
+    'ct-test.R'
+    'methods.R'
