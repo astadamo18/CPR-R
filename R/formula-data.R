@@ -91,6 +91,27 @@ resolve_column_ref <- function(ref, data) {
   ref
 }
 
+#' Resolve an unevaluated `id`/`time` expression, bare column names included
+#'
+#' Lets `pcpr(..., id = COUNTRY, time = YEAR)` work with an *unquoted*
+#' column name, the same way a formula's variables don't need quoting --
+#' not just `id = "COUNTRY"` or `id = df$COUNTRY`. Evaluates `expr` with
+#' `data`'s columns in scope (so a bare `COUNTRY` resolves to
+#' `data$COUNTRY` when `data` has that column) and falls through to `env`
+#' (the caller's frame) for anything not found there -- e.g. `df$COUNTRY`,
+#' or a plain vector variable when there is no `data` (or no such column).
+#' Mirrors how `subset()`/`with()` support unquoted column references.
+#'
+#' @param expr The result of `substitute()` on the argument (unevaluated).
+#' @param data A data frame, or `NULL`.
+#' @param env The environment to fall back to (typically `parent.frame()`
+#'   from the caller of this helper).
+#' @keywords internal
+resolve_nse_column <- function(expr, data, env) {
+  if (is.null(data)) return(eval(expr, envir = env))
+  eval(expr, envir = data, enclos = env)
+}
+
 #' Resolve a multi-column reference (`w`/`deter` for pcpr()) against `data`
 #'
 #' If `ref` is a character vector whose entries all name columns of `data`,

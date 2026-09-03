@@ -116,14 +116,26 @@ pcpr <- function(y, x = NULL, id, time = NULL, orders, w = NULL, deter = NULL,
                   type = "mg", effects = "oneway", data = NULL) {
 
   cl <- match.call()
+  parent_env <- parent.frame()
+  if (missing(id)) {
+    stop("`id` must be supplied: a vector, a column-name string, or (with `data`) ",
+         "a bare column name, e.g. pcpr(y ~ x, data = df, id = country, orders = 2).",
+         call. = FALSE)
+  }
+  id_expr <- substitute(id)
+  time_expr <- substitute(time)
 
   if (inherits(y, "formula")) {
     fd <- extract_formula_xy(y, data)
     y <- fd$y
     x <- fd$x
   }
-  id <- resolve_column_ref(id, data)
-  time <- resolve_column_ref(time, data)
+  # id/time captured unevaluated above so a *bare* column name (id = COUNTRY,
+  # no quotes) can be resolved against `data` -- evaluating them normally
+  # here would error ("object 'COUNTRY' not found") before ever getting a
+  # chance to look them up as a column.
+  id <- resolve_column_ref(resolve_nse_column(id_expr, data, parent_env), data)
+  time <- resolve_column_ref(resolve_nse_column(time_expr, data, parent_env), data)
   if (!is.null(w) && inherits(w, "formula")) {
     w <- resolve_formula_vars(w, data, "w")
   } else {
