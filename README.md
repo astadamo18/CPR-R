@@ -96,10 +96,12 @@ further estimators and a panel version can be added later.
     the point of allowing (`"mg"`) or accounting for (`"pmg"`, per-unit
     Omega_i) heterogeneity; only the sample length feeding into it is held
     fixed.
-  - Accepts the same formula/`data` interface as `cpr()`
-    (`pcpr(y ~ x1, data = df, id = "country", time = "year", orders = 2)`),
-    plus `id`/`time`/`w`/`deter` as column-name strings/vectors against
-    `data` when not given as raw vectors/matrices directly.
+  - Accepts the same formula/`data` interface as `cpr()`. `id`/`time`
+    take a *bare* column name too, `lm()`-like -- no quotes needed:
+    `pcpr(y ~ x1, data = df, id = country, time = year, orders = 2)`
+    (a quoted `id = "country"`, or a raw vector `id = df$country`, both
+    still work). `w`/`deter` accept column-name strings/vectors or
+    one-sided formulas against `data` the same way `cpr()`'s do.
 - `pu_test()`: Phillips-Ouliaris-type PU cointegration test (port of
   `PU_test.m`), rewritten the same way `ct_test()` was: an S3 generic with
   the full 48-table `(d, m, p)` critical-value grid bundled (from every
@@ -202,7 +204,7 @@ panel, since the two tests have opposite nulls.
 
 `examples/example_formula_data.R` walks through the `lm()`-like
 formula/`data` interface for both `cpr()` and `pcpr()` (including `w` as
-a one-sided formula and `pcpr()`'s `id`/`time` as column-name strings),
+a one-sided formula and `pcpr()`'s `id`/`time` as *bare* column names),
 confirming it gives identical fits to the vector interface, then runs
 `ct_test()`/`pu_test()` off the resulting fit.
 

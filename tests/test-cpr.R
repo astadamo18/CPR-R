@@ -423,6 +423,27 @@ stopifnot(isTRUE(all.equal(unname(fit_mg_formula$coefficients), unname(fit_mg$co
 stopifnot(fit_mg_formula$n_units == 13L && fit_mg_formula$n_time == 28L)
 cat("[OK] pcpr(formula, data = ..., id = \"...\", time = \"...\") matches the vector interface\n")
 
+# id/time also accept *bare* (unquoted) column names, lm()-like -- not just
+# quoted strings.
+fit_mg_bare <- pcpr(noip1000 ~ gnipc1000, data = panel, id = COUNTRY, time = YEAR,
+                     orders = 2, kernel = "ba", bandwidth = "And91", type = "mg")
+stopifnot(isTRUE(all.equal(unname(fit_mg_bare$coefficients), unname(fit_mg$coefficients))))
+
+# Missing `id` altogether, and a bare id naming a column that exists
+# nowhere, both error clearly rather than with a confusing NSE internal
+# name or a silent wrong answer.
+err_no_id <- tryCatch({ pcpr(noip1000 ~ gnipc1000, data = panel, orders = 2); NULL },
+                       error = function(e) e)
+stopifnot(!is.null(err_no_id))
+stopifnot(grepl("`id` must be supplied", conditionMessage(err_no_id)))
+
+err_bad_id <- tryCatch({
+  pcpr(noip1000 ~ gnipc1000, data = panel, id = NOSUCHCOLUMN, orders = 2)
+  NULL
+}, error = function(e) e)
+stopifnot(!is.null(err_bad_id))
+cat("[OK] pcpr()'s `id`/`time` accept bare (unquoted) column names, lm()-like\n")
+
 # cpr's returned object carries the resolved raw y/x (post data/formula
 # lookup, pre estimator truncation) for reuse by other functions.
 stopifnot(length(fit_cz_formula$y) == nrow(cz))
