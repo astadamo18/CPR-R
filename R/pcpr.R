@@ -66,17 +66,29 @@ fit_mg_pcpr <- function(y_list, x_list, orders, w_list, deter_list,
 
 #' Fit a panel cointegrating polynomial regression (panel CPR)
 #'
-#' @param y Numeric vector, the (stacked, long-format) dependent variable.
-#' @param x Numeric matrix (or vector) of I(1) regressors, stacked long-format.
+#' @param y Either a numeric vector, the (stacked, long-format) dependent
+#'   variable -- or, lm()-like, a two-sided formula `y ~ x1 + x2` naming
+#'   columns of `data` (in which case `data` is required and `x` is
+#'   ignored); see [cpr()]'s documentation for the formula form's
+#'   limitations (no transformed terms).
+#' @param x Numeric matrix (or vector) of I(1) regressors, stacked
+#'   long-format, when `y` is not a formula.
 #' @param id Vector identifying the cross-sectional unit of each row of
-#'   `y`/`x`. The panel must be balanced: every unit must have the same
-#'   number of time observations.
+#'   `y`/`x` -- or, when `data` is supplied, a single string naming `id`'s
+#'   column in `data` (e.g. `id = "country"`). The panel must be balanced:
+#'   every unit must have the same number of time observations.
 #' @param time Optional time index per row, used to sort observations within
-#'   each unit before differencing/estimation. If `NULL`, rows are assumed
-#'   to already be sorted by time within each unit.
+#'   each unit before differencing/estimation -- or, when `data` is
+#'   supplied, a single string naming `time`'s column in `data` (e.g.
+#'   `time = "year"`). If `NULL`, rows are assumed to already be sorted by
+#'   time within each unit.
+#' @param data A data frame to look up columns in: for the `y ~ x1 + x2`
+#'   formula form, for `id`/`time` given as column-name strings, and/or for
+#'   `w`/`deter` given as column-name strings (e.g. `w = c("w1", "w2")`).
 #' @param orders,w,deter,estimator,bandwidth,kernel Passed through to
 #'   [cpr()] for each unit; see its documentation. `w` and `deter`, if
-#'   supplied, must be stacked long-format like `y`/`x`.
+#'   supplied as raw matrices/vectors (rather than column-name strings),
+#'   must be stacked long-format like `y`/`x`.
 #' @param type Panel estimator type. `"mg"` (mean group; default): average
 #'   of N unit-specific [cpr()] fits, with Pesaran & Smith (1995) between-unit
 #'   inference; allows full slope heterogeneity across units. `"pmg"`
@@ -99,11 +111,34 @@ fit_mg_pcpr <- function(y_list, x_list, orders, w_list, deter_list,
 #'   per-unit diagnostics in `$unit_info`), and `object$unit_coefficients`
 #'   is `NULL` (there is only one, pooled, slope).
 #' @export
-pcpr <- function(y, x, id, time = NULL, orders, w = NULL, deter = NULL,
+pcpr <- function(y, x = NULL, id, time = NULL, orders, w = NULL, deter = NULL,
                   estimator = "FMOLS", bandwidth = "And91", kernel = "ba",
-                  type = "mg", effects = "oneway") {
+                  type = "mg", effects = "oneway", data = NULL) {
 
   cl <- match.call()
+
+  if (inherits(y, "formula")) {
+    fd <- extract_formula_xy(y, data)
+    y <- fd$y
+    x <- fd$x
+  }
+  id <- resolve_column_ref(id, data)
+  time <- resolve_column_ref(time, data)
+  if (!is.null(w) && inherits(w, "formula")) {
+    w <- resolve_formula_vars(w, data, "w")
+  } else {
+    w <- resolve_columns_ref(w, data)
+  }
+  if (!is.null(deter) && inherits(deter, "formula")) {
+    deter <- resolve_formula_vars(deter, data, "deter")
+  } else {
+    deter <- resolve_columns_ref(deter, data)
+  }
+
+  if (is.null(x)) {
+    stop("`x` must be supplied, either directly or implicitly via the right-hand ",
+         "side of a `y ~ x1 + x2` formula (with `data`).", call. = FALSE)
+  }
 
   y <- as.numeric(y)
   x <- as.matrix(x)

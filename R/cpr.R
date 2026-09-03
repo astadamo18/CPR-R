@@ -29,10 +29,17 @@ make_deterministics <- function(Tn, const = TRUE, trend = FALSE) {
 #' regressors `x_t`, `w_t` are stationary (I(0)) regressors, and `deter_t`
 #' are deterministic components (constant, trend, ...).
 #'
-#' @param y Numeric response vector (or single-column matrix): the I(1)
-#'   dependent variable.
+#' @param y Either a numeric response vector (or single-column matrix), the
+#'   I(1) dependent variable -- or, lm()-like, a two-sided formula
+#'   `y ~ x1 + x2` naming columns of `data` (in which case `data` is
+#'   required and `x` is ignored). A formula's right-hand side names
+#'   columns verbatim; see the file-level comment in `R/formula-data.R` for
+#'   why transformed terms like `log(x1)` are not supported directly.
 #' @param x Numeric matrix (or vector) of I(1) regressors, one column per
-#'   variable. At least one column is required.
+#'   variable, when `y` is not a formula. At least one column is required.
+#' @param data A data frame to look up columns in, for the `y ~ x1 + x2`
+#'   formula form (required for it) and/or for `w`/`deter` given as
+#'   one-sided formulas (e.g. `w = ~ w1 + w2`).
 #' @param orders Powers of `x` to include. Either a single integer (same max
 #'   order `1:order` for every column of `x`), a numeric vector of length
 #'   `ncol(x)` (per-column max order), or a list of length `ncol(x)` giving
@@ -70,15 +77,32 @@ make_deterministics <- function(Tn, const = TRUE, trend = FALSE) {
 #' this demeaning is hardwired and not a user-controlled option.
 #'
 #' @return An object of class `"cpr"`, with `print()` and `summary()`
-#'   methods.
+#'   methods. Also carries the resolved `y`/`x` (post `data`/formula
+#'   lookup, pre any estimator-specific truncation) as `$y`/`$x`, so other
+#'   functions needing the original series (e.g. [pu_test()]) can be
+#'   dispatched straight off the fit.
 #' @export
-cpr <- function(y, x, orders, w = NULL, deter = NULL,
+cpr <- function(y, x = NULL, orders, w = NULL, deter = NULL,
                  estimator = "FMOLS",
                  bandwidth = "And91",
                  kernel = "ba",
-                 n_lag = 0, n_lead = 0) {
+                 n_lag = 0, n_lead = 0,
+                 data = NULL) {
 
   cl <- match.call()
+
+  if (inherits(y, "formula")) {
+    fd <- extract_formula_xy(y, data)
+    y <- fd$y
+    x <- fd$x
+  }
+  if (!is.null(w) && inherits(w, "formula")) w <- resolve_formula_vars(w, data, "w")
+  if (!is.null(deter) && inherits(deter, "formula")) deter <- resolve_formula_vars(deter, data, "deter")
+
+  if (is.null(x)) {
+    stop("`x` must be supplied, either directly or implicitly via the right-hand ",
+         "side of a `y ~ x1 + x2` formula (with `data`).", call. = FALSE)
+  }
 
   y <- as.matrix(y)
   x <- as.matrix(x)
@@ -142,6 +166,7 @@ cpr <- function(y, x, orders, w = NULL, deter = NULL,
       residuals_ols = fit$residuals_ols,
       n_obs = fit$n_obs,
       kw = fit$kw, kd = fit$kd, m = fit$m,
+      y = as.numeric(y), x = x,
       fit = fit
     ),
     class = "cpr"
