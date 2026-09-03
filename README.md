@@ -41,14 +41,22 @@ further estimators and a panel version can be added later.
   `cpr` object -- `ct_test(fit)` -- and `uplus`/`omega`/`m`/`p`/`d` are all
   read straight off the fit (`d` is inferred from `deter`: none/const-only/
   const+trend map to `d = -1/0/1`; pass `d` explicitly to override, e.g.
-  for a custom `deter` the inference can't classify). Works for any
-  estimator whose fit exposes residuals and a long-run variance, currently
-  `"FMOLS"` and `"DOLS"`. `ct_test(uplus, omega, d, m, p)` still works too,
-  for the raw ingredients. Critical values are bundled only for the
-  intercept-only,
-  one-regressor, max-power-2 case (`d = 0, m = 1, p = 2`) used in the CEE
-  panel example below; more can be added to `.ct_critval_table` in
-  `R/ct-test.R` from the original `CTcritval/*.mat` files.
+  for a custom `deter` the inference can't classify), with the matching
+  critical value table picked automatically -- the full grid of 48 tables
+  bundled (`d` in `{-1, 0, 1}`, `m` and `p` in `{1, 2, 3, 4}`, extracted
+  from every `CTcritval/*.mat` file in the original toolbox, not just the
+  one the CEE example needs) covers every combination the original
+  toolbox itself tabulates. Works for any estimator whose fit exposes
+  residuals and a long-run variance, currently `"FMOLS"` and `"DOLS"`.
+  `ct_test(uplus, omega, d, m, p)` still works too, for the raw
+  ingredients.
+
+  The result has a `print()` method showing the test statistic, critical
+  values (10%/5%/1%), the reject/do-not-reject decision at each, H0/H1,
+  an approximate p-value (linearly interpolated between the two
+  bracketing tabulated percentiles, in probability space; bounded as
+  `< 0.01` / `> 0.99` outside the tabulated range), and significance
+  stars (the usual `printCoefmat` cutpoints).
 - `pcpr()`: panel cointegrating polynomial regression.
   - `type = "mg"` (mean group, default): calls [`cpr()`] once per
     cross-sectional unit -- literally the same estimation as a standalone
@@ -149,6 +157,12 @@ including the CT test decisions at the 10%/5%/1% levels.
 `pcpr(type = "mg")` instead of a manual per-country loop, and reports the
 group-mean coefficient across all 13 countries alongside the per-country
 estimates that were averaged.
+
+`examples/example_ct_test_print.R` shows `ct_test()`'s full print output
+(statistic, critical values, decisions, H0/H1, interpolated p-value,
+significance stars) on Czechia for `d = 0`, `d = 1` (with a trend), and
+`p = 3` (cubic) -- each automatically pulling a genuinely different
+critical value table from the bundled grid.
 
 `examples/example_pu_test.R` runs `pu_test()` alongside `ct_test()` for
 all 13 CEE countries. In this data, CT never rejects for any country

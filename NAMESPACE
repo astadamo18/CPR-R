@@ -16,6 +16,8 @@ S3method(print, summary.pcpr)
 S3method(coef, pcpr)
 S3method(ct_test, default)
 S3method(ct_test, cpr)
+S3method(print, ct_test)
 
 importFrom(stats, pnorm)
 importFrom(stats, printCoefmat)
+importFrom(stats, symnum)

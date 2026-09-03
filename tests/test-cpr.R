@@ -192,14 +192,16 @@ fit_cz_dols <- cpr(cz$NOIP / 1000, cz$GNIPC / 1000, orders = 2, estimator = "DOL
                     kernel = "ba", bandwidth = "And91")
 ct_cz_dols <- ct_test(fit_cz_dols)
 stopifnot(is.finite(ct_cz_dols$statistic))
-# A fit with a trend infers d = 1 (would 404 against our bundled d=0 table,
-# proving the inference actually changed the lookup, not just defaulted):
+# A fit with a trend infers d = 1, using the real (now-bundled) d=1 table --
+# its critical values differ from the d=0 fit's, proving the inference
+# actually changed which table was looked up, not just defaulted:
 fit_cz_trend <- cpr(cz$NOIP / 1000, cz$GNIPC / 1000, orders = 2,
                      deter = make_deterministics(nrow(cz), trend = TRUE),
                      kernel = "ba", bandwidth = "And91")
-err_d1 <- tryCatch({ ct_test(fit_cz_trend); NULL }, error = function(e) e)
-stopifnot(!is.null(err_d1))
-stopifnot(grepl("No CT critical value table", conditionMessage(err_d1)))
+ct_trend <- ct_test(fit_cz_trend)
+stopifnot(ct_trend$d == 1L)
+stopifnot(!isTRUE(all.equal(ct_trend$critval, ct_cz_direct$critval)))
+stopifnot(isTRUE(all.equal(unname(ct_trend$critval), unname(ct_critval(1, 1, 2)[c("90%", "95%", "99%")]))))
 # A non-standard deter (not const-only or const+trend) can't be classified
 # and asks for `d` explicitly rather than guessing:
 fit_cz_custom <- cpr(cz$NOIP / 1000, cz$GNIPC / 1000, orders = 2,
@@ -210,6 +212,38 @@ stopifnot(!is.null(err_ambig))
 stopifnot(grepl("Cannot automatically infer", conditionMessage(err_ambig)))
 cat("[OK] ct_test() infers `d` from the fit's deter (or errors clearly when it can't)\n")
 cat("[OK] ct_test() works directly on a cpr object (FMOLS and DOLS fits)\n")
+
+## ---- 10c. Full CT critical-value grid (all 48 (d,m,p) combos) loads ----
+n_ok <- 0
+for (dd in c(-1, 0, 1)) for (mm in 1:4) for (pp in 1:4) {
+  tab <- ct_critval(dd, mm, pp)
+  stopifnot(length(tab) == 9)
+  stopifnot(all(diff(tab) > 0))  # percentiles must be strictly increasing
+  n_ok <- n_ok + 1
+}
+stopifnot(n_ok == 48)
+cat("[OK] all 48 bundled CT critical-value tables (d in {-1,0,1}, m,p in {1..4}) load and are monotone\n")
+
+## ---- 10d. ct_pvalue(): interpolation and boundary behavior ----
+tab0 <- ct_critval(0, 1, 2)
+pv_lo <- ct_pvalue(unname(tab0["1%"]) - 1e-6, tab0)
+stopifnot(pv_lo$bound == ">" && isTRUE(all.equal(pv_lo$p_value, 0.99)))
+pv_hi <- ct_pvalue(unname(tab0["99%"]) + 1e-6, tab0)
+stopifnot(pv_hi$bound == "<" && isTRUE(all.equal(pv_hi$p_value, 0.01)))
+pv_med <- ct_pvalue(unname(tab0["50%"]), tab0)
+stopifnot(pv_med$bound == "" && isTRUE(all.equal(pv_med$p_value, 0.5)))
+cat("[OK] ct_pvalue() interpolates correctly and bounds outside the tabulated range\n")
+
+## ---- 10e. print.ct_test() output ----
+ct_out <- capture.output(print(ct_cz_direct))
+stopifnot(any(grepl("H0: cointegration", ct_out)))
+stopifnot(any(grepl("H1: no cointegration", ct_out)))
+stopifnot(any(grepl("Test statistic", ct_out)))
+stopifnot(any(grepl("Critical values", ct_out)))
+stopifnot(any(grepl("Decision", ct_out)))
+stopifnot(any(grepl("Approx. p-value", ct_out)))
+stopifnot(any(grepl("Signif. codes", ct_out)))
+cat("[OK] print.ct_test() shows statistic, critical values, hypotheses, p-value, and sig. codes\n")
 
 ## ---- 11. pcpr(): mean-group panel estimator ----
 
