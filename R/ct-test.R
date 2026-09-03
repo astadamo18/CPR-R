@@ -151,7 +151,7 @@ ct_test.default <- function(x, omega, d, m, p, alpha = c(0.1, 0.05, 0.01), ...) 
 #' order). Anything else (custom `deter`, unusual column names/order) has
 #' no well-defined `d` and must be passed explicitly to [ct_test.cpr()].
 #' @keywords internal
-infer_ct_d <- function(x) {
+infer_cpr_d <- function(x) {
   kd <- x$kd
   deter_names <- names(x$coefficients)[x$kw + seq_len(kd)]
 
@@ -171,7 +171,7 @@ infer_ct_d <- function(x) {
 #'   straight off the fit (`x$fit$residuals`, `x$fit$Omega_udotv1`,
 #'   `x$fit$m`, and the highest power in `x$fit$powers`). `d` defaults to
 #'   `NULL`, which infers it from the fit's own `deter` (see
-#'   [infer_ct_d()]) -- since `d` is exactly the choice you already made
+#'   [infer_cpr_d()]) -- since `d` is exactly the choice you already made
 #'   via `cpr(..., deter = ...)`, there is no need to state it twice.
 #'   Pass `d` explicitly to override the inference (e.g. for a custom
 #'   `deter` the auto-detection can't classify). Works for any estimator
@@ -185,7 +185,7 @@ ct_test.cpr <- function(x, d = NULL, alpha = c(0.1, 0.05, 0.01), ...) {
     stop("This cpr fit (estimator = '", x$estimator, "') does not provide the ",
          "residuals/long-run variance ct_test() needs.", call. = FALSE)
   }
-  if (is.null(d)) d <- infer_ct_d(x)
+  if (is.null(d)) d <- infer_cpr_d(x)
   m <- x$fit$m
   p <- max(unlist(x$fit$powers))
   ct_test.default(uplus, omega, d = d, m = m, p = p, alpha = alpha)

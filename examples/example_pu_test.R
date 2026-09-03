@@ -9,11 +9,16 @@
 # reject; when both fail to reject (as for most countries below), the
 # joint result is inconclusive rather than contradictory.
 #
+# pu_test(), like ct_test(), is now an S3 generic with a print() method and
+# the full (d, m, p) critical-value grid bundled -- pu_test(fit) dispatches
+# straight off a fitted cpr object (see also examples/example_ct_test_print.R
+# for the print output on its own).
+#
 # Run from the package root with: Rscript examples/example_pu_test.R
 
 source_order <- c(
   "lr-weights.R", "lr-var.R", "bandwidth.R", "prewhiten.R", "poly-terms.R",
-  "fmols.R", "dols.R", "estimators.R", "cpr.R", "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R", "methods.R"
+  "fmols.R", "dols.R", "estimators.R", "formula-data.R", "cpr.R", "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R", "methods.R"
 )
 invisible(lapply(file.path("R", source_order), source))
 
@@ -33,7 +38,7 @@ for (cname in countries) {
   ct <- ct_test(fit)
   ct_dec <- ifelse(ct$reject, "rejection", "no rejection")
 
-  pu <- pu_test(y, x, d = 0, m = 1, orders = 2, kernel = "ba", bandwidth = "And91")
+  pu <- pu_test(fit)
   pu_dec <- ifelse(pu$reject, "rejection", "no rejection")
 
   cat(sprintf("%-10s %8.3f %-12s %-12s %-12s | %8.3f %-12s %-12s %-12s\n",

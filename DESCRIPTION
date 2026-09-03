@@ -25,6 +25,7 @@ Collate:
     'fmols.R'
     'dols.R'
     'estimators.R'
+    'formula-data.R'
     'cpr.R'
     'pooled-panel.R'
     'pcpr.R'

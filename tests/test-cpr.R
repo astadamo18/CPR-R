@@ -6,7 +6,7 @@
 # load time, so fmols.R must be sourced first).
 source_order <- c(
   "lr-weights.R", "lr-var.R", "bandwidth.R", "prewhiten.R", "poly-terms.R",
-  "fmols.R", "dols.R", "estimators.R", "cpr.R", "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R", "methods.R"
+  "fmols.R", "dols.R", "estimators.R", "formula-data.R", "cpr.R", "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R", "methods.R"
 )
 invisible(lapply(file.path("R", source_order), source))
 
@@ -329,6 +329,7 @@ cz <- panel[panel$COUNTRY == "Czechia", ]
 cz <- cz[order(cz$YEAR), ]
 pu_cz <- pu_test(cz$NOIP / 1000, cz$GNIPC / 1000, d = 0, m = 1, orders = 2,
                   kernel = "ba", bandwidth = "And91")
+stopifnot(inherits(pu_cz, "pu_test"))
 stopifnot(is.finite(pu_cz$statistic))
 stopifnot(length(pu_cz$reject) == 3)
 cat("[OK] pu_test() runs and returns a finite statistic\n")
@@ -339,13 +340,93 @@ cat("[OK] pu_test() runs and returns a finite statistic\n")
 stopifnot(isTRUE(all.equal(pu_cz$critval[2], 37.87475517642149)))
 cat("[OK] PU critical values match the original PUcritval/*.mat table\n")
 
-# Missing critical value table -> informative error.
-err_pu <- tryCatch({
-  pu_test(cz$NOIP / 1000, cz$GNIPC / 1000, d = 1, m = 1, orders = 2, kernel = "ba", bandwidth = "And91")
-  NULL
-}, error = function(e) e)
+# All 48 (d,m,p) combos load (full grid, same as ct_critval()'s).
+n_ok_pu <- 0
+for (dd in c(-1, 0, 1)) for (mm in 1:4) for (pp in 1:4) {
+  tab <- pu_critval(dd, mm, pp)
+  stopifnot(length(tab) == 9)
+  stopifnot(all(diff(tab) > 0))
+  n_ok_pu <- n_ok_pu + 1
+}
+stopifnot(n_ok_pu == 48)
+cat("[OK] all 48 bundled PU critical-value tables load and are monotone\n")
+
+# Out-of-range (d,m,p) still errors informatively.
+err_pu <- tryCatch({ pu_critval(0, 5, 2); NULL }, error = function(e) e)
 stopifnot(!is.null(err_pu))
 stopifnot(grepl("No PU critical value table", conditionMessage(err_pu)))
 cat("[OK] pu_test() errors informatively for an untabulated (d, m, p)\n")
+
+# pu_test() dispatches on a fitted cpr object, same as ct_test().
+fit_cz_pu <- cpr(cz$NOIP / 1000, cz$GNIPC / 1000, orders = 2, kernel = "ba", bandwidth = "And91")
+pu_cz_direct <- pu_test(fit_cz_pu)
+stopifnot(isTRUE(all.equal(pu_cz_direct$statistic, pu_cz$statistic)))
+stopifnot(pu_cz_direct$d == 0L)
+# Works off a DOLS fit too (pu_test doesn't use FM-OLS residuals at all).
+fit_cz_pu_dols <- cpr(cz$NOIP / 1000, cz$GNIPC / 1000, orders = 2, estimator = "DOLS",
+                       kernel = "ba", bandwidth = "And91")
+pu_cz_dols <- pu_test(fit_cz_pu_dols)
+stopifnot(is.finite(pu_cz_dols$statistic))
+cat("[OK] pu_test() dispatches on a fitted cpr object (FMOLS and DOLS fits)\n")
+
+# print.pu_test() output.
+pu_out <- capture.output(print(pu_cz_direct))
+stopifnot(any(grepl("H0: no cointegration", pu_out)))
+stopifnot(any(grepl("H1: cointegration", pu_out)))
+stopifnot(any(grepl("Test statistic", pu_out)))
+stopifnot(any(grepl("Critical values", pu_out)))
+stopifnot(any(grepl("Decision", pu_out)))
+cat("[OK] print.pu_test() shows statistic, critical values, decisions, and hypotheses\n")
+
+## ---- 13. lm()-like formula/data interface for cpr() and pcpr() ----
+
+# cpr(): formula + data gives identical results to the vector interface,
+# with nicer coefficient names (from the formula's RHS, not "x1").
+fit_cz_formula <- cpr(NOIP1000 ~ GNIPC1000,
+                       data = data.frame(NOIP1000 = cz$NOIP / 1000, GNIPC1000 = cz$GNIPC / 1000),
+                       orders = 2, kernel = "ba", bandwidth = "And91")
+stopifnot(isTRUE(all.equal(unname(fit_cz_formula$coefficients), unname(fit_cz$coefficients))))
+stopifnot(identical(names(fit_cz_formula$coefficients), c("const", "GNIPC1000^1", "GNIPC1000^2")))
+cat("[OK] cpr(formula, data = ...) matches the vector interface, with formula-derived names\n")
+
+# Formula without `data`, and a formula naming a missing column, both error clearly.
+err_no_data <- tryCatch({ cpr(y ~ x, orders = 2); NULL }, error = function(e) e)
+stopifnot(!is.null(err_no_data))
+stopifnot(grepl("`data` must be supplied", conditionMessage(err_no_data)))
+
+err_missing_col <- tryCatch({
+  cpr(NOIP1000 ~ nosuchcolumn, data = data.frame(NOIP1000 = 1:5, x = 1:5), orders = 2)
+  NULL
+}, error = function(e) e)
+stopifnot(!is.null(err_missing_col))
+stopifnot(grepl("Column\\(s\\) not found", conditionMessage(err_missing_col)))
+cat("[OK] cpr() formula interface errors clearly when `data` is missing or a column isn't found\n")
+
+# `w` and `deter` can also be given as one-sided formulas against `data`.
+set.seed(7)
+Tn2 <- 150
+df_wz <- data.frame(y = 0, x = cumsum(rnorm(Tn2)), z = rnorm(Tn2), trend = seq_len(Tn2))
+u2 <- as.numeric(arima.sim(list(ar = 0.4), n = Tn2))
+df_wz$y <- 2 + 0.5 * df_wz$x + 0.1 * df_wz$x^2 + 0.8 * df_wz$z + u2
+fit_wz <- cpr(y ~ x, data = df_wz, w = ~z, deter = ~trend, orders = 2, kernel = "ba", bandwidth = "And91")
+stopifnot(all(c("z", "trend", "x^1", "x^2") %in% names(fit_wz$coefficients)))
+stopifnot(abs(fit_wz$coefficients["z"] - 0.8) < 0.3)
+cat("[OK] cpr()'s `w`/`deter` accept one-sided formulas against `data`\n")
+
+# pcpr(): formula + data, with id/time as column-name strings, matches the
+# vector interface exactly.
+panel$noip1000 <- panel$NOIP / 1000
+panel$gnipc1000 <- panel$GNIPC / 1000
+fit_mg_formula <- pcpr(noip1000 ~ gnipc1000, data = panel, id = "COUNTRY", time = "YEAR",
+                        orders = 2, kernel = "ba", bandwidth = "And91", type = "mg")
+stopifnot(isTRUE(all.equal(unname(fit_mg_formula$coefficients), unname(fit_mg$coefficients))))
+stopifnot(fit_mg_formula$n_units == 13L && fit_mg_formula$n_time == 28L)
+cat("[OK] pcpr(formula, data = ..., id = \"...\", time = \"...\") matches the vector interface\n")
+
+# cpr's returned object carries the resolved raw y/x (post data/formula
+# lookup, pre estimator truncation) for reuse by other functions.
+stopifnot(length(fit_cz_formula$y) == nrow(cz))
+stopifnot(isTRUE(all.equal(fit_cz_formula$x[, 1], cz$GNIPC / 1000, check.attributes = FALSE)))
+cat("[OK] cpr() stores the resolved raw y/x on the returned object\n")
 
 cat("\nAll tests passed.\n")
