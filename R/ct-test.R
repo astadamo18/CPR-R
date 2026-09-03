@@ -74,43 +74,6 @@ ct_critval <- function(d, m, p) {
   tab
 }
 
-#' Approximate p-value for the CT statistic by interpolation
-#'
-#' The CT statistic's null distribution is only known via 9 tabulated
-#' percentiles (1%, 2.5%, 5%, 10%, 50%, 90%, 95%, 97.5%, 99%) -- with that
-#' many points, linear interpolation between the two bracketing tabulated
-#' critical values (in probability space) gives a reasonable approximate
-#' p-value without needing the full asymptotic distribution. This is a
-#' right-tailed test (reject H0 for large statistics), so the p-value is
-#' `1 - ` the interpolated cumulative probability. Outside the tabulated
-#' range the p-value is only bounded (`"<"`/`">"` the nearest tabulated
-#' level), not interpolated.
-#'
-#' @param statistic The observed CT statistic.
-#' @param crit_table A 9-element named critical value vector from
-#'   [ct_critval()].
-#' @return A list with `p_value` (numeric) and `bound` (`""`, `"<"`, or
-#'   `">"`, indicating whether `p_value` is exact-by-interpolation or a
-#'   bound from falling outside the tabulated range).
-#' @keywords internal
-ct_pvalue <- function(statistic, crit_table) {
-  probs <- c(0.01, 0.025, 0.05, 0.10, 0.50, 0.90, 0.95, 0.975, 0.99)
-  labs <- c("1%", "2.5%", "5%", "10%", "50%", "90%", "95%", "97.5%", "99%")
-  crit <- as.numeric(crit_table[labs])
-
-  if (statistic <= crit[1]) {
-    return(list(p_value = 1 - probs[1], bound = ">"))
-  }
-  if (statistic >= crit[length(crit)]) {
-    return(list(p_value = 1 - probs[length(probs)], bound = "<"))
-  }
-
-  idx <- max(which(crit <= statistic))
-  frac <- (statistic - crit[idx]) / (crit[idx + 1] - crit[idx])
-  prob_interp <- probs[idx] + frac * (probs[idx + 1] - probs[idx])
-  list(p_value = 1 - prob_interp, bound = "")
-}
-
 #' KPSS/Shin-type CT cointegration test for a cointegrating polynomial regression
 #'
 #' Tests the null hypothesis of cointegration (no unit root in the FM-OLS
@@ -130,8 +93,7 @@ ct_pvalue <- function(statistic, crit_table) {
 #' `p` in `{1, 2, 3, 4}`).
 #'
 #' The returned object has a `print()` method showing the test statistic,
-#' critical values, hypotheses, an approximate (interpolated) p-value, and
-#' significance stars.
+#' critical values, decisions, and hypotheses.
 #'
 #' @param x Either a numeric vector of residuals (`uplus`, dispatching to
 #'   [ct_test.default()]) or a fitted [cpr()] object (dispatching to
@@ -141,9 +103,8 @@ ct_pvalue <- function(statistic, crit_table) {
 #' @return An object of class `"ct_test"`: a list with `statistic` (the CT
 #'   test statistic), `alpha`, `critval` (critical value per `alpha`),
 #'   `reject` (logical per `alpha`; `TRUE` means reject the null of
-#'   cointegration, i.e. evidence *against* cointegration), `p_value` and
-#'   `p_bound` (interpolated p-value, and whether it's a bound -- see
-#'   [ct_pvalue()]), and `d`/`m`/`p` (the critical value table used).
+#'   cointegration, i.e. evidence *against* cointegration), and `d`/`m`/`p`
+#'   (the critical value table used).
 #' @export
 ct_test <- function(x, ...) {
   UseMethod("ct_test")
@@ -176,12 +137,9 @@ ct_test.default <- function(x, omega, d, m, p, alpha = c(0.1, 0.05, 0.01), ...) 
   }
   critval <- as.numeric(crit_table[lab])
 
-  pv <- ct_pvalue(statistic, crit_table)
-
   structure(
     list(statistic = statistic, alpha = alpha, critval = critval,
-         reject = statistic > critval, p_value = pv$p_value, p_bound = pv$bound,
-         d = d, m = m, p = p),
+         reject = statistic > critval, d = d, m = m, p = p),
     class = "ct_test"
   )
 }
@@ -235,9 +193,8 @@ ct_test.cpr <- function(x, d = NULL, alpha = c(0.1, 0.05, 0.01), ...) {
 
 #' @export
 print.ct_test <- function(x, digits = 4, ...) {
-  cat("CT test for cointegration (KPSS/Shin-type; Wagner et al.)\n\n")
-  cat("H0: cointegration        H1: no cointegration\n")
-  cat("(right-tailed: rejects H0 -- evidence AGAINST cointegration -- when statistic > critical value)\n\n")
+  cat("CT test for cointegration\n\n")
+  cat("H0: cointegration        H1: no cointegration\n\n")
   cat("d =", x$d, " m =", x$m, " p =", x$p, "\n")
   cat("Test statistic:", format(round(x$statistic, digits)), "\n\n")
 
@@ -251,14 +208,5 @@ print.ct_test <- function(x, digits = 4, ...) {
   print(round(cv, digits))
   cat("\nDecision:\n")
   print(decision, quote = FALSE)
-
-  stars <- stats::symnum(x$p_value, corr = FALSE, na = FALSE,
-                          cutpoints = c(0, 0.001, 0.01, 0.05, 0.1, 1),
-                          symbols = c("***", "**", "*", ".", " "))
-  p_label <- paste0(x$p_bound, format(round(x$p_value, digits), nsmall = digits))
-  cat("\nApprox. p-value:", trimws(p_label), as.character(stars), "\n")
-  cat("(interpolated from the tabulated percentiles: 1%, 2.5%, 5%, 10%, 50%, 90%, 95%, 97.5%, 99%)\n")
-  cat("---\n")
-  cat("Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n")
   invisible(x)
 }

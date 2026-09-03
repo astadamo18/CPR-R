@@ -52,11 +52,10 @@ further estimators and a panel version can be added later.
   ingredients.
 
   The result has a `print()` method showing the test statistic, critical
-  values (10%/5%/1%), the reject/do-not-reject decision at each, H0/H1,
-  an approximate p-value (linearly interpolated between the two
-  bracketing tabulated percentiles, in probability space; bounded as
-  `< 0.01` / `> 0.99` outside the tabulated range), and significance
-  stars (the usual `printCoefmat` cutpoints).
+  values (10%/5%/1%), the reject/do-not-reject decision at each, and
+  H0/H1. No p-value or significance stars for now: the null distribution
+  is only known via the 9 tabulated percentiles per table, which isn't
+  enough points to interpolate a p-value with any real precision.
 - `pcpr()`: panel cointegrating polynomial regression.
   - `type = "mg"` (mean group, default): calls [`cpr()`] once per
     cross-sectional unit -- literally the same estimation as a standalone
@@ -158,10 +157,9 @@ including the CT test decisions at the 10%/5%/1% levels.
 group-mean coefficient across all 13 countries alongside the per-country
 estimates that were averaged.
 
-`examples/example_ct_test_print.R` shows `ct_test()`'s full print output
-(statistic, critical values, decisions, H0/H1, interpolated p-value,
-significance stars) on Czechia for `d = 0`, `d = 1` (with a trend), and
-`p = 3` (cubic) -- each automatically pulling a genuinely different
+`examples/example_ct_test_print.R` shows `ct_test()`'s print output
+(statistic, critical values, decisions, H0/H1) on Czechia for `d = 0`,
+`d = 1` (with a trend), and `p = 3` (cubic) -- each automatically pulling a genuinely different
 critical value table from the bundled grid.
 
 `examples/example_pu_test.R` runs `pu_test()` alongside `ct_test()` for

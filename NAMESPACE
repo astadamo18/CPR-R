@@ -20,4 +20,3 @@ S3method(print, ct_test)
 
 importFrom(stats, pnorm)
 importFrom(stats, printCoefmat)
-importFrom(stats, symnum)

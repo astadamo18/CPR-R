@@ -224,26 +224,15 @@ for (dd in c(-1, 0, 1)) for (mm in 1:4) for (pp in 1:4) {
 stopifnot(n_ok == 48)
 cat("[OK] all 48 bundled CT critical-value tables (d in {-1,0,1}, m,p in {1..4}) load and are monotone\n")
 
-## ---- 10d. ct_pvalue(): interpolation and boundary behavior ----
-tab0 <- ct_critval(0, 1, 2)
-pv_lo <- ct_pvalue(unname(tab0["1%"]) - 1e-6, tab0)
-stopifnot(pv_lo$bound == ">" && isTRUE(all.equal(pv_lo$p_value, 0.99)))
-pv_hi <- ct_pvalue(unname(tab0["99%"]) + 1e-6, tab0)
-stopifnot(pv_hi$bound == "<" && isTRUE(all.equal(pv_hi$p_value, 0.01)))
-pv_med <- ct_pvalue(unname(tab0["50%"]), tab0)
-stopifnot(pv_med$bound == "" && isTRUE(all.equal(pv_med$p_value, 0.5)))
-cat("[OK] ct_pvalue() interpolates correctly and bounds outside the tabulated range\n")
-
-## ---- 10e. print.ct_test() output ----
+## ---- 10d. print.ct_test() output ----
 ct_out <- capture.output(print(ct_cz_direct))
 stopifnot(any(grepl("H0: cointegration", ct_out)))
 stopifnot(any(grepl("H1: no cointegration", ct_out)))
 stopifnot(any(grepl("Test statistic", ct_out)))
 stopifnot(any(grepl("Critical values", ct_out)))
 stopifnot(any(grepl("Decision", ct_out)))
-stopifnot(any(grepl("Approx. p-value", ct_out)))
-stopifnot(any(grepl("Signif. codes", ct_out)))
-cat("[OK] print.ct_test() shows statistic, critical values, hypotheses, p-value, and sig. codes\n")
+stopifnot(!any(grepl("p-value|Signif. codes", ct_out)))  # dropped for now: only 9 tabulated percentiles
+cat("[OK] print.ct_test() shows statistic, critical values, decisions, and hypotheses (no p-value/stars for now)\n")
 
 ## ---- 11. pcpr(): mean-group panel estimator ----
 
