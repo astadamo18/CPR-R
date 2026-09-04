@@ -511,6 +511,51 @@ stopifnot(identical(names(tp_pmg), c("x", "y", "type")))
 stopifnot(nrow(tp_pmg) == 0)  # outside the observed range for this data
 cat("[OK] turning_points.pcpr(type='pmg') uses the single common-slope root, restricted to the observed range\n")
 
+# The pmg constant reconstruction (pmg_average_const()) must use each
+# unit's own *raw* y/x, not anything derived from the demeaned/within
+# estimation (which would just be ~0, a relative position rather than a
+# real level). Checked two ways against an independent ground truth:
+# (a) per-unit alpha_i, paired with beta_lsdv (not the reported beta_FM),
+# must match a genuine dummy-variable (LSDV) lm() regression exactly; (b)
+# the single averaged constant this function actually reports must, when
+# paired with *any* beta (including the reported beta_FM), exactly
+# reproduce the panel's true grand-mean y -- both properties should hold
+# for oneway and twoway effects alike.
+for (eff in c("oneway", "twoway")) {
+  fit_pmg_eff <- pcpr(panel$NOIP / 1000, panel$GNIPC / 1000, id = panel$COUNTRY, time = panel$YEAR,
+                       orders = 2, kernel = "ba", bandwidth = "And91", type = "pmg", effects = eff)
+  beta_lsdv_eff <- fit_pmg_eff$unit_fits$beta_lsdv
+  beta_fm_eff <- unname(fit_pmg_eff$coefficients[c("x1^1", "x1^2")])
+
+  alpha_i_lsdv <- vapply(fit_pmg_eff$unit_fits$unit_info, function(u) {
+    mean(u$y) - as.numeric(colMeans(gen_power_reg(u$x, c(1, 2))) %*% beta_lsdv_eff)
+  }, numeric(1))
+
+  if (eff == "oneway") {
+    lm_ground_truth <- lm(NOIP1000 ~ factor(COUNTRY) + GNIPC1000 + I(GNIPC1000^2) - 1,
+                           data = transform(panel, NOIP1000 = NOIP / 1000, GNIPC1000 = GNIPC / 1000))
+    lm_alpha <- coef(lm_ground_truth)[paste0("factor(COUNTRY)", fit_pmg_eff$units)]
+  } else {
+    lm_ground_truth <- lm(NOIP1000 ~ GNIPC1000 + I(GNIPC1000^2) + factor(COUNTRY) + factor(YEAR),
+                           data = transform(panel, NOIP1000 = NOIP / 1000, GNIPC1000 = GNIPC / 1000),
+                           contrasts = list(`factor(COUNTRY)` = "contr.sum", `factor(YEAR)` = "contr.sum"))
+    cc <- coef(lm_ground_truth)
+    alpha_sum <- cc[grepl("factor\\(COUNTRY\\)", names(cc))]
+    alpha_all <- c(alpha_sum, -sum(alpha_sum))
+    names(alpha_all) <- sort(unique(panel$COUNTRY))
+    lm_alpha <- cc[["(Intercept)"]] + alpha_all[fit_pmg_eff$units]
+  }
+  stopifnot(isTRUE(all.equal(unname(alpha_i_lsdv), unname(lm_alpha), tolerance = 1e-8)))
+
+  grand_ybar <- mean(panel$NOIP / 1000)
+  mean_xbar_powers <- colMeans(t(vapply(fit_pmg_eff$unit_fits$unit_info, function(u) {
+    colMeans(gen_power_reg(u$x, c(1, 2)))
+  }, numeric(2))))
+  const_reported <- pmg_average_const(fit_pmg_eff$unit_fits, beta_fm_eff, c(1, 2))
+  stopifnot(isTRUE(all.equal(const_reported + as.numeric(mean_xbar_powers %*% beta_fm_eff), grand_ybar)))
+}
+cat("[OK] pmg's reconstructed constant uses raw (not demeaned) data: matches an independent LSDV regression exactly, and always reproduces the panel's grand-mean y\n")
+
 # plot() methods run without error (redirected to a throwaway pdf() device,
 # no display needed) and return the same turning-point data invisibly.
 plot_dev_file <- tempfile(fileext = ".pdf")

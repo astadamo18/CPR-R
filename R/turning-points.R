@@ -120,11 +120,20 @@ turning_points.cpr <- function(object, x_range = "data", ...) {
 #' For `type = "pmg"`, there is a single common slope, so at most one
 #' turning point of each type. The pooled model has no single estimated
 #' constant (individual, and possibly time, fixed effects absorb it
-#' instead), so the constant used for the curve's level is approximated as
-#' the average, across units, of that unit's own implied fixed effect
-#' `mean(y_i) - beta_FM' * mean(x_i^powers)` -- exact for `effects =
-#' "oneway"`, an approximation for `"twoway"` (which additionally has a
-#' common time effect that only nets to zero on average).
+#' instead), so the constant used for the curve's level is the average,
+#' across units, of that unit's own implied fixed effect `alpha_i =
+#' mean(y_i) - beta_FM' * mean(x_i^powers)` -- reconstructed from each
+#' unit's own *raw* (not demeaned) `y`/`x`, so it is a real, data-scale
+#' level, not an artifact of the within-transformed estimation (verified
+#' against an independent dummy-variable regression: exact to floating-point
+#' precision when this formula is paired with `beta_lsdv`, for both
+#' `effects = "oneway"` and `"twoway"`). Pairing it with `beta_FM` instead
+#' (as here, for consistency with the slope actually reported/plotted)
+#' makes each *individual* `alpha_i` only an approximation of that unit's
+#' true fixed effect; what stays exact regardless of which beta is used is
+#' the single number this function actually reports: `mean(alpha_i) +
+#' beta' * mean_i(x_i^powers-bar)` always reproduces the panel's true
+#' grand-mean `y` exactly, by construction.
 #' @rdname turning_points
 #' @export
 turning_points.pcpr <- function(object, ...) {
@@ -181,6 +190,14 @@ pmg_turning_points <- function(object) {
 }
 
 #' Average, across units, of each unit's own implied fixed effect
+#'
+#' `alpha_i = mean(y_i) - beta' * mean(x_i^powers)`, using each unit's own
+#' *raw* `y`/`x` (`unit_info[[i]]$y`/`$x`, stored by [fit_pooled_panel_cpr()]
+#' before any within/demeaning transformation) -- not anything read off the
+#' demeaned estimation itself, which would just be ~0 by construction (a
+#' relative position, not a real level). See the `@details` on
+#' [turning_points.pcpr()] for the exactness this formula does (and does
+#' not) guarantee.
 #' @keywords internal
 pmg_average_const <- function(fit, beta, powers1) {
   alpha_i <- vapply(fit$unit_info, function(u) {

@@ -145,7 +145,12 @@ further estimators and a panel version can be added later.
     has a single common slope, so at most one turning point per type; the
     pooled model has no single estimated constant (fixed effects absorb
     it), so its curve uses the average, across units, of each one's own
-    implied fixed effect instead.
+    implied fixed effect instead -- reconstructed from each unit's own
+    *raw* (not demeaned) data, so it is a real, data-scale level rather
+    than an artifact of the within-transformed estimation; verified
+    against an independent dummy-variable regression (see the `@details`
+    on `turning_points.pcpr()` in `R/turning-points.R` and the
+    corresponding test in `tests/test-cpr.R`).
   - `plot(fit)`: draws the fitted curve (`cpr`: with the observed data
     scatter; `pcpr(type = "mg")`: the group-mean curve, with each unit's
     own curve shown faintly for context; `pcpr(type = "pmg")`: the single
