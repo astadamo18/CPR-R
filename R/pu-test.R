@@ -10,6 +10,15 @@
 # genuinely different test statistic, reusing the same kernel/bandwidth/
 # long-run-variance machinery as cpr() and ct_test().
 #
+# One consequence: unlike ct_test.cpr() (which is restricted to estimator =
+# "FMOLS" fits, since its critical values were tabulated specifically for
+# FM-OLS residuals -- see the file-level comment in R/ct-test.R),
+# pu_test.cpr() is estimator-agnostic and needs no such restriction. It
+# never reads `x$fit$residuals` or anything else specific to how the fit
+# was estimated -- only `x$y`/`x$x` (the raw series) and `x$kernel`/
+# `x$bandwidth` (settings, not estimator output) -- so its critical values
+# are valid for a cpr fit regardless of `estimator`.
+#
 # Rewritten the same way ct_test() was: an S3 generic dispatching either on
 # the raw ingredients (pu_test.default()) or directly on a fitted cpr()
 # object (pu_test.cpr(), which pulls y/x/d/m/p off the fit -- possible
@@ -220,7 +229,10 @@ pu_test.default <- function(y, x, d, m, orders, kernel, bandwidth, alpha = c(0.1
 #'   default `orders = p` form) -- the structural case `PU_test.m` itself
 #'   supports via a single `orders` scalar; for anything else (multiple
 #'   regressors, non-sequential powers), call [pu_test.default()] directly
-#'   with the right `d`/`m`/`orders`.
+#'   with the right `d`/`m`/`orders`. Works for a fit of *any* `estimator`
+#'   (unlike [ct_test.cpr()], which only supports `"FMOLS"`): this method
+#'   never reads the fit's estimator-specific residuals, only its raw
+#'   `y`/`x`, so the critical values stay valid regardless of `estimator`.
 #' @export
 pu_test.cpr <- function(y, d = NULL, alpha = c(0.1, 0.05, 0.01), ...) {
   fit <- y

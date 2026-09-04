@@ -56,10 +56,15 @@ further estimators and a panel version can be added later.
   bundled (`d` in `{-1, 0, 1}`, `m` and `p` in `{1, 2, 3, 4}`, extracted
   from every `CTcritval/*.mat` file in the original toolbox, not just the
   one the CEE example needs) covers every combination the original
-  toolbox itself tabulates. Works for any estimator whose fit exposes
-  residuals and a long-run variance, currently `"FMOLS"` and `"DOLS"`.
-  `ct_test(uplus, omega, d, m, p)` still works too, for the raw
-  ingredients.
+  toolbox itself tabulates. Only supports `estimator = "FMOLS"` fits: the
+  bundled critical values were Monte Carlo simulated specifically for
+  FM-OLS residuals (`CT_test.m`'s own docstring: "uplus...FM-OLS
+  residuals"), and nothing establishes that a different estimator's
+  residuals (e.g. DOLS's) share that null distribution -- `ct_test()` on a
+  non-FMOLS fit errors rather than silently reusing the table. (`pu_test()`,
+  below, has no such restriction -- it never touches a fit's
+  estimator-specific residuals at all.) `ct_test(uplus, omega, d, m, p)`
+  still works too, for the raw ingredients.
 
   The result has a `print()` method showing the test statistic, critical
   values (10%/5%/1%), the reject/do-not-reject decision at each, and
@@ -291,8 +296,11 @@ rejects its unsupported cases (q outside `{2, 3}`, `w`) with clear errors,
 a qualitative consistency check between `pmg` (N=1) and standalone `cpr()`,
 that all 48 bundled CT and PU critical-value tables load and are monotone,
 that `ct_test()`/`pu_test()` dispatch correctly on a fitted `cpr` object
-(both `"FMOLS"` and `"DOLS"` fits) with their `print()` methods showing
-the expected sections, and that `cpr()`/`pcpr()`'s formula/`data`
+with their `print()` methods showing the expected sections, that
+`ct_test()` rejects a non-`"FMOLS"` fit with a clear error (its critical
+values are only valid for FM-OLS residuals) while `pu_test()` runs fine on
+the same `"DOLS"` fit (it never touches estimator-specific residuals), and
+that `cpr()`/`pcpr()`'s formula/`data`
 interface (including `w`/`deter` as formulas and `pcpr()`'s `id`/`time`
 as column-name strings) gives results identical to the vector interface
 and errors clearly when `data` is missing or a named column isn't found,

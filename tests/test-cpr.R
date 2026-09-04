@@ -188,11 +188,21 @@ stopifnot(identical(ct_cz_direct$reject, ct_cz$reject))
 # Explicit d still overrides the inference, with an identical result here:
 ct_cz_explicit <- ct_test(fit_cz, d = 0)
 stopifnot(isTRUE(all.equal(ct_cz_explicit$statistic, ct_cz_direct$statistic)))
-# Also works on a DOLS fit (any estimator whose fit exposes residuals + Omega):
+# ct_test()'s bundled critical values were simulated specifically for
+# FM-OLS residuals (CT_test.m's own docstring says so) -- there is no
+# result establishing a DOLS fit's residuals follow the same null
+# distribution, so ct_test() must refuse a non-FMOLS fit rather than
+# silently reusing the FM-OLS table for it.
 fit_cz_dols <- cpr(cz$NOIP / 1000, cz$GNIPC / 1000, orders = 2, estimator = "DOLS",
                     kernel = "ba", bandwidth = "And91")
-ct_cz_dols <- ct_test(fit_cz_dols)
-stopifnot(is.finite(ct_cz_dols$statistic))
+err_ct_dols <- tryCatch({ ct_test(fit_cz_dols); NULL }, error = function(e) e)
+stopifnot(!is.null(err_ct_dols))
+stopifnot(grepl("only supports estimator = 'FMOLS'", conditionMessage(err_ct_dols)))
+# pu_test(), by contrast, never touches the fit's estimator-specific
+# residuals (only its raw y/x), so it has no such restriction -- it should
+# run identically well on a DOLS fit as on an FMOLS one:
+pu_cz_dols <- pu_test(fit_cz_dols)
+stopifnot(is.finite(pu_cz_dols$statistic))
 # A fit with a trend infers d = 1, using the real (now-bundled) d=1 table --
 # its critical values differ from the d=0 fit's, proving the inference
 # actually changed which table was looked up, not just defaulted:
@@ -212,7 +222,7 @@ err_ambig <- tryCatch({ ct_test(fit_cz_custom); NULL }, error = function(e) e)
 stopifnot(!is.null(err_ambig))
 stopifnot(grepl("Cannot automatically infer", conditionMessage(err_ambig)))
 cat("[OK] ct_test() infers `d` from the fit's deter (or errors clearly when it can't)\n")
-cat("[OK] ct_test() works directly on a cpr object (FMOLS and DOLS fits)\n")
+cat("[OK] ct_test() works directly on a cpr object, and rejects non-FMOLS fits (pu_test() does not)\n")
 
 ## ---- 10c. Full CT critical-value grid (all 48 (d,m,p) combos) loads ----
 n_ok <- 0

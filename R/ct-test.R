@@ -9,6 +9,17 @@
 # ct_test() picks the right one automatically from the fitted cpr object
 # (d from its deter, m/p from its integrated regressors), so it works for
 # any specification within that range without the caller managing tables.
+#
+# CT_test.m's own docstring is explicit that its input ("uplus") is
+# "FM-OLS residuals" -- the tables were simulated under that assumption, not
+# for a generic residual series. ct_test.cpr() therefore only accepts
+# estimator = "FMOLS" fits; a DOLS (or future MOLS/IMOLS) fit's residuals
+# are not known to share the same null distribution, so silently reusing
+# these tables for them would be invalid inference, not a relaxed version
+# of the same test. (pu_test(), by contrast, never touches a fit's
+# estimator-specific residuals at all -- it recomputes its own statistic
+# from the fit's raw y/x -- so it has no such restriction; see the
+# file-level comment in R/pu-test.R.)
 
 .ct_critval_table <- list(
   "d-1_m1_p1" = c(`1%` = 0.028276238938219463, `2.5%` = 0.03536095977837203, `5%` = 0.04379213691103463, `10%` = 0.057582452685228616, `50%` = 0.20162102798743783, `90%` = 0.8575426192325417, `95%` = 1.2086564481499904, `97.5%` = 1.6004648610102743, `99%` = 2.1412522883361493),
@@ -174,11 +185,22 @@ infer_cpr_d <- function(x) {
 #'   [infer_cpr_d()]) -- since `d` is exactly the choice you already made
 #'   via `cpr(..., deter = ...)`, there is no need to state it twice.
 #'   Pass `d` explicitly to override the inference (e.g. for a custom
-#'   `deter` the auto-detection can't classify). Works for any estimator
-#'   whose fit provides residuals and a long-run variance (currently
-#'   `"FMOLS"` and `"DOLS"`).
+#'   `deter` the auto-detection can't classify). Only supports `estimator =
+#'   "FMOLS"` fits: the bundled critical values were Monte Carlo simulated
+#'   specifically for FM-OLS residuals (`CT_test.m`'s own docstring:
+#'   "uplus...FM-OLS residuals"), and there is no result establishing that a
+#'   different estimator's residuals (e.g. DOLS's) follow the same null
+#'   distribution -- using this table with them would be silently invalid
+#'   inference, not a relaxed version of the same test.
 #' @export
 ct_test.cpr <- function(x, d = NULL, alpha = c(0.1, 0.05, 0.01), ...) {
+  if (!identical(x$estimator, "FMOLS")) {
+    stop("ct_test() only supports estimator = 'FMOLS' fits: its bundled critical ",
+         "values were simulated specifically for FM-OLS residuals (see the file-level ",
+         "comment in R/ct-test.R), and are not known to be valid for a '", x$estimator,
+         "' fit's residuals. Re-fit with cpr(..., estimator = 'FMOLS') to use ct_test().",
+         call. = FALSE)
+  }
   uplus <- x$fit$residuals
   omega <- x$fit$Omega_udotv1
   if (is.null(uplus) || is.null(omega)) {
