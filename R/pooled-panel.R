@@ -203,7 +203,7 @@ fit_pooled_panel_cpr <- function(y, x, q, kernel, bandwidth, effects = "oneway")
       Sum_OudotvOvv <- Sum_OudotvOvv + Omega_udotv_i * Ovv_i
     }
 
-    Eqn[[i]] <- list(x = x[, i], u_hat = u_hat_i, vt = vt_i, X_tilde = X_tilde_i,
+    Eqn[[i]] <- list(x = x[, i], y = y[, i], u_hat = u_hat_i, vt = vt_i, X_tilde = X_tilde_i,
                       Omega = Lr_i, Delta = Dr_i, M = M_i, Omega_udotv = Omega_udotv_i)
   }
 

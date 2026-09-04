@@ -6,7 +6,8 @@
 # load time, so fmols.R must be sourced first).
 source_order <- c(
   "lr-weights.R", "lr-var.R", "bandwidth.R", "prewhiten.R", "poly-terms.R",
-  "fmols.R", "dols.R", "estimators.R", "formula-data.R", "cpr.R", "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R", "methods.R"
+  "fmols.R", "dols.R", "estimators.R", "formula-data.R", "cpr.R", "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R",
+  "turning-points.R", "plot.R", "methods.R"
 )
 invisible(lapply(file.path("R", source_order), source))
 
@@ -449,5 +450,83 @@ cat("[OK] pcpr()'s `id`/`time` accept bare (unquoted) column names, lm()-like\n"
 stopifnot(length(fit_cz_formula$y) == nrow(cz))
 stopifnot(isTRUE(all.equal(fit_cz_formula$x[, 1], cz$GNIPC / 1000, check.attributes = FALSE)))
 cat("[OK] cpr() stores the resolved raw y/x on the returned object\n")
+
+## ---- 16. turning_points() / plot(): EKC-style turning point analysis ----
+
+# Single fit (Czechia, quadratic): the vertex of a pure quadratic
+# const + b1*x + b2*x^2 is at x* = -b1/(2*b2) in closed form.
+b1 <- fit_cz$coefficients["x1^1"]
+b2 <- fit_cz$coefficients["x1^2"]
+expected_x <- unname(-b1 / (2 * b2))
+tp_cz <- turning_points(fit_cz)
+stopifnot(nrow(tp_cz) == 1)
+stopifnot(isTRUE(all.equal(tp_cz$x, expected_x)))
+expected_y <- unname(fit_cz$coefficients["const"] + b1 * expected_x + b2 * expected_x^2)
+stopifnot(isTRUE(all.equal(tp_cz$y, expected_y)))
+stopifnot(tp_cz$type == (if (b2 > 0) "minimum" else "maximum"))
+
+# A purely linear fit (orders = 1) has no turning point.
+fit_cz_linear <- cpr(cz$NOIP / 1000, cz$GNIPC / 1000, orders = 1, kernel = "ba", bandwidth = "And91")
+tp_linear <- turning_points(fit_cz_linear)
+stopifnot(nrow(tp_linear) == 0)
+stopifnot(identical(names(tp_linear), c("x", "y", "type")))
+
+# turning_points() only supports a single integrated regressor.
+err_tp_multi <- tryCatch({ turning_points(fit_multi); NULL }, error = function(e) e)
+stopifnot(!is.null(err_tp_multi))
+stopifnot(grepl("single integrated regressor", conditionMessage(err_tp_multi)))
+cat("[OK] turning_points.cpr() matches the closed-form quadratic vertex, and handles the linear/multi-regressor edge cases\n")
+
+# Panel mean-group: the reported average is, by construction, the mean (by
+# type) of each unit's own turning point -- checked by recomputing it
+# independently here, plus checked that the "proper constant" used for the
+# labeled y-value is the panel's own group-mean constant, not zero or an
+# unweighted per-unit average of y* values.
+unit_tp_list <- lapply(fit_mg$unit_fits, turning_points)
+unit_tp_x <- vapply(unit_tp_list, function(d) if (nrow(d) == 1) d$x else NA_real_, numeric(1))
+expected_avg_x <- mean(unit_tp_x, na.rm = TRUE)
+tp_mg <- turning_points(fit_mg)
+stopifnot(nrow(tp_mg) == 1)  # every unit that has one turning point here has a "minimum"
+stopifnot(isTRUE(all.equal(tp_mg$x, expected_avg_x)))
+stopifnot(tp_mg$n_units == sum(!is.na(unit_tp_x)))
+const_mg <- fit_mg$coefficients["const"]
+b1_mg <- fit_mg$coefficients["x1^1"]
+b2_mg <- fit_mg$coefficients["x1^2"]
+expected_y_mg <- unname(const_mg + b1_mg * tp_mg$x + b2_mg * tp_mg$x^2)
+stopifnot(isTRUE(all.equal(tp_mg$y, expected_y_mg)))
+cat("[OK] turning_points.pcpr(type='mg') averages per-unit turning points and labels them with the group-mean curve\n")
+
+# Panel pooled (pmg): a single common slope, so at most one turning point
+# per type; here it happens to fall outside the observed x-range for both
+# effects specifications, which is a real (if unexciting) finding, not a
+# bug -- checked directly against the unrestricted root.
+fit_pmg2 <- pcpr(panel$NOIP / 1000, panel$GNIPC / 1000, id = panel$COUNTRY, time = panel$YEAR,
+                  orders = 2, kernel = "ba", bandwidth = "And91", type = "pmg")
+beta_pmg <- unname(fit_pmg2$coefficients[c("x1^1", "x1^2")])
+expected_root_pmg <- -beta_pmg[1] / (2 * beta_pmg[2])
+tp_pmg_unrestricted <- poly_turning_points(beta_pmg, c(1, 2), const = 0, x_range = NULL)
+stopifnot(isTRUE(all.equal(tp_pmg_unrestricted$x, expected_root_pmg)))
+tp_pmg <- turning_points(fit_pmg2)
+stopifnot(identical(names(tp_pmg), c("x", "y", "type")))
+stopifnot(nrow(tp_pmg) == 0)  # outside the observed range for this data
+cat("[OK] turning_points.pcpr(type='pmg') uses the single common-slope root, restricted to the observed range\n")
+
+# plot() methods run without error (redirected to a throwaway pdf() device,
+# no display needed) and return the same turning-point data invisibly.
+plot_dev_file <- tempfile(fileext = ".pdf")
+grDevices::pdf(plot_dev_file)
+invisible_tp_cz <- plot(fit_cz)
+invisible_tp_mg <- plot(fit_mg)
+invisible_tp_pmg <- plot(fit_pmg2)
+grDevices::dev.off()
+unlink(plot_dev_file)
+stopifnot(isTRUE(all.equal(invisible_tp_cz, tp_cz)))
+stopifnot(isTRUE(all.equal(invisible_tp_mg, tp_mg)))
+stopifnot(isTRUE(all.equal(invisible_tp_pmg, tp_pmg)))
+
+err_plot_multi <- tryCatch({ plot(fit_multi); NULL }, error = function(e) e)
+stopifnot(!is.null(err_plot_multi))
+stopifnot(grepl("single integrated regressor", conditionMessage(err_plot_multi)))
+cat("[OK] plot.cpr()/plot.pcpr() run without error and return the same turning-point data as turning_points()\n")
 
 cat("\nAll tests passed.\n")
