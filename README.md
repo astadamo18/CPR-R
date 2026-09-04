@@ -121,7 +121,37 @@ further estimators and a panel version can be added later.
   results shouldn't be expected to mirror `ct_test()`'s automatically, and
   it works off any `cpr` fit regardless of `estimator` (it never touches
   the fit's residuals).
-- Homogeneity tests and turning-point analysis are not implemented yet.
+- `turning_points()` / `plot()`: EKC-style turning-point analysis (port of
+  the analysis underlying `deJongWagner2022`'s income/emissions curve), for
+  a single-regressor fit's quadratic/cubic (or higher) relationship in `x`.
+  A turning point is where the fitted curve's slope in `x` is zero; its
+  *location* only depends on the slope coefficients, but the curve's
+  *level* (and so the plotted/labeled turning-point value) also needs the
+  constant, which is always included even though it never moves the
+  turning point's x-position -- see the file-level comment in
+  `R/turning-points.R`.
+  - `turning_points(fit)`: an S3 generic. For a `cpr` fit, returns a data
+    frame of `x`/`y`/`type` (`"maximum"`/`"minimum"`/`"inflection"`),
+    restricted by default to turning points inside the observed range of
+    `x` (interior turning points only -- pass `x_range = NULL` to keep
+    extrapolated roots too). Zero rows for a purely linear fit. Only
+    supports a single integrated regressor.
+  - For a `pcpr` fit: `type = "mg"` computes each unit's own turning
+    point first (mean-group philosophy: average a nonlinear function of
+    the per-unit estimates, the same way the coefficients themselves are
+    averaged), then averages by type across the units that have one,
+    reporting the count (`n_units`) and using the panel's own group-mean
+    curve (constant included) to compute the labeled `y`. `type = "pmg"`
+    has a single common slope, so at most one turning point per type; the
+    pooled model has no single estimated constant (fixed effects absorb
+    it), so its curve uses the average, across units, of each one's own
+    implied fixed effect instead.
+  - `plot(fit)`: draws the fitted curve (`cpr`: with the observed data
+    scatter; `pcpr(type = "mg")`: the group-mean curve, with each unit's
+    own curve shown faintly for context; `pcpr(type = "pmg")`: the single
+    pooled curve) with turning point(s) marked and labeled, and invisibly
+    returns the same data `turning_points()` would.
+- Homogeneity tests are not implemented yet.
 
 ## Installation
 
@@ -145,7 +175,8 @@ clone (also how the test suite and example scripts run):
 source_order <- c(
   "lr-weights.R", "lr-var.R", "bandwidth.R", "prewhiten.R", "poly-terms.R",
   "fmols.R", "dols.R", "estimators.R", "formula-data.R", "cpr.R",
-  "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R", "methods.R"
+  "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R",
+  "turning-points.R", "plot.R", "methods.R"
 )
 invisible(lapply(file.path("R", source_order), source))
 ```
@@ -172,6 +203,12 @@ summary(fit_pmg)
 
 ct_test(fit)   # dispatches on the fitted cpr object either way
 pu_test(fit)
+
+turning_points(fit)   # EKC-style turning point(s): x, y, type ("maximum"/"minimum")
+plot(fit)              # ... plus the fitted curve, labeled at the turning point(s)
+
+turning_points(fit_mg)   # panel: averaged (by type) across units' own turning points
+plot(fit_mg)              # ... group-mean curve, each unit's own curve shown faintly
 ```
 
 See `examples/example_cpr.R` for a fuller `cpr()` walkthrough (trend
@@ -207,6 +244,13 @@ formula/`data` interface for both `cpr()` and `pcpr()` (including `w` as
 a one-sided formula and `pcpr()`'s `id`/`time` as *bare* column names),
 confirming it gives identical fits to the vector interface, then runs
 `ct_test()`/`pu_test()` off the resulting fit.
+
+`examples/example_turning_points.R` computes and plots EKC-style turning
+points for Czechia alone, the mean-group panel, and the pooled panel --
+including the pooled case's honest empty result (its common-slope curve's
+vertex falls outside every country's observed GNIPC range in this data, so
+there is no interior turning point to report). Writes PNGs into `examples/`
+(not tracked by git; see `.gitignore`) since it's meant to run headlessly.
 
 `examples/example_pcpr_pmg.R` fits the pooled panel model (`type = "pmg"`)
 on the same CEE panel, both `oneway` and `twoway`, and compares its
@@ -246,7 +290,14 @@ that `ct_test()`/`pu_test()` dispatch correctly on a fitted `cpr` object
 the expected sections, and that `cpr()`/`pcpr()`'s formula/`data`
 interface (including `w`/`deter` as formulas and `pcpr()`'s `id`/`time`
 as column-name strings) gives results identical to the vector interface
-and errors clearly when `data` is missing or a named column isn't found.
+and errors clearly when `data` is missing or a named column isn't found,
+that `turning_points()` matches the closed-form vertex of a quadratic fit
+and handles the linear (no turning point) and multi-regressor (error)
+edge cases, that the panel `"mg"` average is exactly the mean (by type) of
+the per-unit turning points recomputed independently, that the panel
+`"pmg"` case correctly restricts to the observed range, and that the
+`plot()` methods run without error and return the same data
+`turning_points()` does.
 
 ### A cross-platform bug this port found and fixed
 
