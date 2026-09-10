@@ -107,15 +107,15 @@ turning_points.cpr <- function(object, x_range = "data", ...) {
 }
 
 #' @details
-#' For `type = "mg"`, the turning point of each per-unit fit is computed
-#' first (each restricted to that unit's own observed x-range), then
-#' averaged across units *by type* (all `"maximum"` points averaged
-#' together, all `"minimum"` points averaged together) -- the mean-group
-#' philosophy applied to a nonlinear function of the estimates, the same way
-#' [pcpr()]'s coefficients themselves are a mean-group average of per-unit
-#' coefficients. The reported `y` at each averaged `x` uses the panel's own
-#' group-mean curve (`object$coefficients`, which already averages the
-#' constant across units along with the slopes).
+#' For `type = "mg"`, the turning point is that of the group-mean curve
+#' itself -- [pcpr()]'s own group-mean coefficients (`object$coefficients`,
+#' constant included) plugged into [poly_turning_points()], restricted to
+#' the observed x-range pooled across all units. This is the turning point
+#' of the curve [plot.pcpr()] actually draws (not the average of each
+#' unit's own turning point computed from its own coefficients -- those two
+#' generally differ, since the turning point `x* = -beta1/(2*beta2)` is a
+#' nonlinear function of the coefficients and averaging coefficients first
+#' does not commute with solving for `x*` first).
 #'
 #' For `type = "pmg"`, there is a single common slope, so at most one
 #' turning point of each type. The pooled model has no single estimated
@@ -140,42 +140,19 @@ turning_points.pcpr <- function(object, ...) {
   if (identical(object$type, "PMG")) {
     return(pmg_turning_points(object))
   }
-  mg <- mg_unit_turning_points(object)
-  if (nrow(mg$unit_turning_points) == 0) {
-    return(mg$unit_turning_points)
-  }
-  mg$average
+  mg_turning_points(object)
 }
 
 #' @keywords internal
-mg_unit_turning_points <- function(object) {
+mg_turning_points <- function(object) {
   unit_fits <- object$unit_fits
-  N <- length(unit_fits)
   xname <- colnames(unit_fits[[1]]$x)[1]
   powers1 <- unit_fits[[1]]$fit$powers[[1]]
-
-  unit_tp <- vector("list", N)
-  for (i in seq_len(N)) {
-    df_i <- turning_points.cpr(unit_fits[[i]], x_range = "data")
-    df_i$unit <- rep(object$units[i], nrow(df_i))
-    unit_tp[[i]] <- df_i
-  }
-  unit_tp <- do.call(rbind, unit_tp)
-
-  if (nrow(unit_tp) == 0) {
-    return(list(unit_turning_points = unit_tp, average = unit_tp))
-  }
-
   beta_mg <- unname(object$coefficients[paste0(xname, "^", powers1)])
   const_mg <- get_const_coef(object$coefficients)
 
-  counts <- table(unit_tp$type)
-  avg_x <- stats::aggregate(x ~ type, data = unit_tp, FUN = mean)
-  avg_x$y <- vapply(avg_x$x, function(xv) const_mg + sum(beta_mg * xv^powers1), numeric(1))
-  avg_x$n_units <- as.integer(counts[avg_x$type])
-  avg_x <- avg_x[order(avg_x$x), c("x", "y", "type", "n_units")]
-
-  list(unit_turning_points = unit_tp, average = avg_x)
+  x_range <- range(unlist(lapply(unit_fits, function(f) f$x[, 1])))
+  poly_turning_points(beta_mg, powers1, const = const_mg, x_range = x_range)
 }
 
 #' @keywords internal

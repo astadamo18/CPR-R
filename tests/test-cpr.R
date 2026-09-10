@@ -487,24 +487,32 @@ stopifnot(!is.null(err_tp_multi))
 stopifnot(grepl("single integrated regressor", conditionMessage(err_tp_multi)))
 cat("[OK] turning_points.cpr() matches the closed-form quadratic vertex, and handles the linear/multi-regressor edge cases\n")
 
-# Panel mean-group: the reported average is, by construction, the mean (by
-# type) of each unit's own turning point -- checked by recomputing it
-# independently here, plus checked that the "proper constant" used for the
-# labeled y-value is the panel's own group-mean constant, not zero or an
-# unweighted per-unit average of y* values.
-unit_tp_list <- lapply(fit_mg$unit_fits, turning_points)
-unit_tp_x <- vapply(unit_tp_list, function(d) if (nrow(d) == 1) d$x else NA_real_, numeric(1))
-expected_avg_x <- mean(unit_tp_x, na.rm = TRUE)
-tp_mg <- turning_points(fit_mg)
-stopifnot(nrow(tp_mg) == 1)  # every unit that has one turning point here has a "minimum"
-stopifnot(isTRUE(all.equal(tp_mg$x, expected_avg_x)))
-stopifnot(tp_mg$n_units == sum(!is.na(unit_tp_x)))
+# Panel mean-group: the reported turning point is that of the group-mean
+# curve itself (pcpr()'s own group-mean coefficients, constant included) --
+# the same closed-form vertex check as the single-fit case above, not an
+# average of each unit's own (individually computed) turning point. Those
+# two generally differ (x* = -b1/(2*b2) is a nonlinear function of the
+# coefficients, so averaging coefficients first vs. solving for x* first
+# don't commute) -- deliberately using the group-mean-curve version here so
+# the reported/plotted turning point always sits exactly on the plotted
+# curve.
 const_mg <- fit_mg$coefficients["const"]
 b1_mg <- fit_mg$coefficients["x1^1"]
 b2_mg <- fit_mg$coefficients["x1^2"]
+expected_x_mg <- unname(-b1_mg / (2 * b2_mg))
+tp_mg <- turning_points(fit_mg)
+stopifnot(nrow(tp_mg) == 1)
+stopifnot(isTRUE(all.equal(tp_mg$x, expected_x_mg)))
 expected_y_mg <- unname(const_mg + b1_mg * tp_mg$x + b2_mg * tp_mg$x^2)
 stopifnot(isTRUE(all.equal(tp_mg$y, expected_y_mg)))
-cat("[OK] turning_points.pcpr(type='mg') averages per-unit turning points and labels them with the group-mean curve\n")
+# ... and it differs from the (no longer reported) average of each unit's
+# own turning point, confirming the two really are different quantities:
+unit_tp_x <- vapply(fit_mg$unit_fits, function(f) {
+  d <- turning_points(f)
+  if (nrow(d) == 1) d$x else NA_real_
+}, numeric(1))
+stopifnot(!isTRUE(all.equal(tp_mg$x, mean(unit_tp_x, na.rm = TRUE))))
+cat("[OK] turning_points.pcpr(type='mg') is the group-mean curve's own turning point (matches the plotted curve exactly)\n")
 
 # Panel pooled (pmg): a single common slope, so at most one turning point
 # per type; here it happens to fall outside the observed x-range for both
