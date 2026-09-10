@@ -46,14 +46,15 @@ plot.cpr <- function(x, y = NULL, n = 200, x_range = NULL, show_data = TRUE,
   invisible(tp)
 }
 
-#' Plot the fitted curve and (averaged) turning point(s) of a panel
-#' cointegrating polynomial regression
+#' Plot the fitted curve and turning point(s) of a panel cointegrating
+#' polynomial regression
 #'
-#' For `type = "mg"`: the group-mean curve only (using [pcpr()]'s own
-#' group-mean coefficients, constant included), with turning points
-#' averaged across units by type (see [turning_points.pcpr()]). For
-#' `type = "pmg"`: the single pooled curve, using the average implied
-#' fixed effect as its constant (see [turning_points.pcpr()]).
+#' For `type = "mg"`: the group-mean curve (using [pcpr()]'s own
+#' group-mean coefficients, constant included), with its own turning
+#' point marked -- always exactly on the drawn curve (see
+#' [turning_points.pcpr()]). For `type = "pmg"`: the single pooled curve,
+#' using the average implied fixed effect as its constant (see
+#' [turning_points.pcpr()]).
 #'
 #' @param x A fitted `"pcpr"` object.
 #' @param y Ignored (required by the [plot()] generic's signature).
@@ -90,13 +91,9 @@ plot_pcpr_mg <- function(object, n, digits, xlab, ylab, main, ...) {
   if (is.null(main)) main <- "Turning point analysis (mean group)"
   graphics::plot(grid, curve_y, type = "l", lwd = 2, xlab = xlab, ylab = ylab, main = main, ...)
 
-  avg <- mg_unit_turning_points(object)$average
-  if (nrow(avg) > 0) {
-    labels <- paste0("avg. ", avg$type, " (N=", avg$n_units, ")\n(",
-                      round(avg$x, digits), ", ", round(avg$y, digits), ")")
-    draw_turning_points(avg, digits = digits, labels = labels)
-  }
-  invisible(avg)
+  tp <- poly_turning_points(beta_mg, powers1, const = const_mg, x_range = xr)
+  draw_turning_points(tp, digits = digits)
+  invisible(tp)
 }
 
 #' @keywords internal

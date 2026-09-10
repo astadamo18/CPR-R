@@ -141,12 +141,16 @@ further estimators and a panel version can be added later.
     `x` (interior turning points only -- pass `x_range = NULL` to keep
     extrapolated roots too). Zero rows for a purely linear fit. Only
     supports a single integrated regressor.
-  - For a `pcpr` fit: `type = "mg"` computes each unit's own turning
-    point first (mean-group philosophy: average a nonlinear function of
-    the per-unit estimates, the same way the coefficients themselves are
-    averaged), then averages by type across the units that have one,
-    reporting the count (`n_units`) and using the panel's own group-mean
-    curve (constant included) to compute the labeled `y`. `type = "pmg"`
+  - For a `pcpr` fit: `type = "mg"` reports the turning point of the
+    group-mean curve itself -- [`pcpr()`]'s own group-mean coefficients
+    (constant included) plugged into the same closed-form root-finding as
+    `cpr`, restricted to the observed x-range pooled across units. This is
+    deliberately *not* the average of each unit's own (individually
+    computed) turning point: since `x* = -beta1/(2*beta2)` is a nonlinear
+    function of the coefficients, averaging coefficients first and solving
+    for `x*` first generally give different answers, and the group-mean
+    version is the one that always sits exactly on the curve `plot()`
+    actually draws. `type = "pmg"`
     has a single common slope, so at most one turning point per type; the
     pooled model has no single estimated constant (fixed effects absorb
     it), so its curve uses the average, across units, of each one's own
