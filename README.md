@@ -157,10 +157,9 @@ further estimators and a panel version can be added later.
     on `turning_points.pcpr()` in `R/turning-points.R` and the
     corresponding test in `tests/test-cpr.R`).
   - `plot(fit)`: draws the fitted curve (`cpr`: with the observed data
-    scatter; `pcpr(type = "mg")`: the group-mean curve, with each unit's
-    own curve shown faintly for context; `pcpr(type = "pmg")`: the single
-    pooled curve) with turning point(s) marked and labeled, and invisibly
-    returns the same data `turning_points()` would.
+    scatter; `pcpr(type = "mg")`: the group-mean curve only; `pcpr(type =
+    "pmg")`: the single pooled curve) with turning point(s) marked and
+    labeled, and invisibly returns the same data `turning_points()` would.
 - Homogeneity tests are not implemented yet.
 
 ## Installation
@@ -218,7 +217,7 @@ turning_points(fit)   # EKC-style turning point(s): x, y, type ("maximum"/"minim
 plot(fit)              # ... plus the fitted curve, labeled at the turning point(s)
 
 turning_points(fit_mg)   # panel: averaged (by type) across units' own turning points
-plot(fit_mg)              # ... group-mean curve, each unit's own curve shown faintly
+plot(fit_mg)              # ... plots the group-mean curve only
 ```
 
 See `examples/example_cpr.R` for a fuller `cpr()` walkthrough (trend

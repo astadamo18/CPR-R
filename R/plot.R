@@ -49,38 +49,33 @@ plot.cpr <- function(x, y = NULL, n = 200, x_range = NULL, show_data = TRUE,
 #' Plot the fitted curve and (averaged) turning point(s) of a panel
 #' cointegrating polynomial regression
 #'
-#' For `type = "mg"`: the group-mean curve (using [pcpr()]'s own
-#' group-mean coefficients, constant included) with each unit's own curve
-#' shown faintly for context, and turning points averaged across units by
-#' type (see [turning_points.pcpr()]). For `type = "pmg"`: the single pooled
-#' curve, using the average implied fixed effect as its constant (see
-#' [turning_points.pcpr()]).
+#' For `type = "mg"`: the group-mean curve only (using [pcpr()]'s own
+#' group-mean coefficients, constant included), with turning points
+#' averaged across units by type (see [turning_points.pcpr()]). For
+#' `type = "pmg"`: the single pooled curve, using the average implied
+#' fixed effect as its constant (see [turning_points.pcpr()]).
 #'
 #' @param x A fitted `"pcpr"` object.
 #' @param y Ignored (required by the [plot()] generic's signature).
-#' @param n Number of points in the smooth curve grid(s).
-#' @param show_units For `type = "mg"`, also draw each unit's own curve
-#'   faintly. Ignored for `type = "pmg"` (there is only one curve).
+#' @param n Number of points in the smooth curve grid.
 #' @param digits Rounding used in the turning-point labels.
 #' @param xlab,ylab,main Plot labels; default sensibly if left `NULL`.
 #' @param ... Passed on to the underlying [plot()] call.
 #' @return Invisibly, the turning-point data (see [turning_points.pcpr()]).
 #' @export
-plot.pcpr <- function(x, y = NULL, n = 200, show_units = TRUE, digits = 3,
+plot.pcpr <- function(x, y = NULL, n = 200, digits = 3,
                        xlab = NULL, ylab = "prediction", main = NULL, ...) {
   object <- x
   if (identical(object$type, "PMG")) {
     plot_pcpr_pmg(object, n = n, digits = digits, xlab = xlab, ylab = ylab, main = main, ...)
   } else {
-    plot_pcpr_mg(object, n = n, show_units = show_units, digits = digits,
-                  xlab = xlab, ylab = ylab, main = main, ...)
+    plot_pcpr_mg(object, n = n, digits = digits, xlab = xlab, ylab = ylab, main = main, ...)
   }
 }
 
 #' @keywords internal
-plot_pcpr_mg <- function(object, n, show_units, digits, xlab, ylab, main, ...) {
+plot_pcpr_mg <- function(object, n, digits, xlab, ylab, main, ...) {
   unit_fits <- object$unit_fits
-  N <- length(unit_fits)
   xname <- colnames(unit_fits[[1]]$x)[1]
   powers1 <- unit_fits[[1]]$fit$powers[[1]]
 
@@ -94,18 +89,6 @@ plot_pcpr_mg <- function(object, n, show_units, digits, xlab, ylab, main, ...) {
   if (is.null(xlab)) xlab <- xname
   if (is.null(main)) main <- "Turning point analysis (mean group)"
   graphics::plot(grid, curve_y, type = "l", lwd = 2, xlab = xlab, ylab = ylab, main = main, ...)
-
-  if (show_units) {
-    for (i in seq_len(N)) {
-      f <- unit_fits[[i]]
-      xr_i <- range(f$x[, 1])
-      beta_i <- unname(f$coefficients[paste0(xname, "^", powers1)])
-      const_i <- get_const_coef(f$coefficients)
-      grid_i <- seq(xr_i[1], xr_i[2], length.out = n)
-      curve_i <- const_i + as.numeric(gen_power_reg(grid_i, powers1) %*% beta_i)
-      graphics::lines(grid_i, curve_i, col = grDevices::adjustcolor("steelblue", 0.35))
-    }
-  }
 
   avg <- mg_unit_turning_points(object)$average
   if (nrow(avg) > 0) {
