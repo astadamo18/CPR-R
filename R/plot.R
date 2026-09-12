@@ -37,7 +37,19 @@ plot.cpr <- function(x, y = NULL, n = 200, x_range = NULL, show_data = TRUE,
   tp <- poly_turning_points(beta, powers1, const = const, x_range = xr)
 
   if (is.null(xlab)) xlab <- xname
-  graphics::plot(grid, curve_y, type = "l", lwd = 2, xlab = xlab, ylab = ylab, main = main, ...)
+  dots <- list(...)
+  # The axis limits must cover the actual data too, not just the fitted
+  # curve -- an observation's residual can easily put it outside the
+  # curve's own range (e.g. right at the edge of x, where a single noisy
+  # point pulls y well below/above the smooth fit), and plot() sets the
+  # visible region from its first two arguments only; points() added
+  # afterward are silently clipped if they fall outside it.
+  if (show_data) {
+    if (is.null(dots$ylim)) dots$ylim <- range(c(curve_y, object$y))
+    if (is.null(dots$xlim)) dots$xlim <- range(c(grid, object$x[, 1]))
+  }
+  do.call(graphics::plot, c(list(grid, curve_y, type = "l", lwd = 2,
+                                  xlab = xlab, ylab = ylab, main = main), dots))
   if (show_data) {
     graphics::points(object$x[, 1], object$y, pch = 16,
                       col = grDevices::adjustcolor("black", 0.35))
