@@ -592,4 +592,25 @@ stopifnot(!is.null(err_plot_multi))
 stopifnot(grepl("single integrated regressor", conditionMessage(err_plot_multi)))
 cat("[OK] plot.cpr()/plot.pcpr() run without error and return the same turning-point data as turning_points()\n")
 
+# plot.cpr()'s axis limits must cover the actual data, not just the fitted
+# curve: an observation's residual can put it outside the curve's own
+# range (e.g. a noisy point right at the edge of x), and plot()'s first
+# call sets the visible region before points() adds the data -- anything
+# outside it gets silently clipped unless the axis limits account for it.
+set.seed(7)
+x_edge <- cumsum(rnorm(40))
+y_edge <- 2 + 0.5 * x_edge + 0.05 * x_edge^2 + rnorm(40, sd = 0.5)
+y_edge[which.max(x_edge)] <- y_edge[which.max(x_edge)] - 20  # forced large residual right at the edge
+fit_edge <- cpr(y_edge, x_edge, orders = 2)
+
+plot_dev_edge <- tempfile(fileext = ".pdf")
+grDevices::pdf(plot_dev_edge)
+plot(fit_edge)
+usr <- graphics::par("usr")  # c(x1, x2, y1, y2) of the actual plotting region
+grDevices::dev.off()
+unlink(plot_dev_edge)
+stopifnot(min(fit_edge$y) >= usr[3] && max(fit_edge$y) <= usr[4])
+stopifnot(min(fit_edge$x) >= usr[1] && max(fit_edge$x) <= usr[2])
+cat("[OK] plot.cpr()'s axis limits cover the actual data even when a point falls outside the fitted curve's own range\n")
+
 cat("\nAll tests passed.\n")
