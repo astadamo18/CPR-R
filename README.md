@@ -30,7 +30,18 @@ further estimators and a panel version can be added later.
     `n_lag = n_lead = 0`.
   - Bandwidth selection: `"And91"` (Andrews, 1991), `"AM92"` (Andrews &
     Monahan, 1992, VAR(1) pre-whitened), `"NW"` (Newey & West, 1994), or a
-    fixed numeric bandwidth.
+    fixed numeric bandwidth. For `"And91"`/`"NW"`, the bandwidth is resolved
+    *once*, from `[u_ols, Delta(x)]`, and that same numeric value is reused
+    for every other long-run-variance step FM-OLS needs (in particular a
+    stationary regressor `w`'s HAC standard errors) -- matching
+    `FM_CPR.m`'s own `bandw` variable, which is deliberately computed once
+    and reused rather than re-selected fresh per series. This was a real
+    port bug found and fixed: re-selecting a bandwidth fresh from a
+    different series (as an earlier version of this port did) can resolve
+    to a materially different number and change `w`'s standard errors.
+    `"AM92"` has no single bandwidth to share -- it always reruns its own
+    VAR-prewhitened procedure fresh on whatever series it's given, matching
+    the original's separate `AndMon_HAC92()` calls.
   - Kernels: truncated (`"tr"`), Bartlett (`"ba"`), Parzen (`"pa"`), Bohman
     (`"bo"`), Daniell (`"da"`), Quadratic Spectral (`"qs"`).
   - Demeaning of `Delta(x_t)` in the long-run variance step is always
@@ -309,11 +320,16 @@ as column-name strings) gives results identical to the vector interface
 and errors clearly when `data` is missing or a named column isn't found,
 that `turning_points()` matches the closed-form vertex of a quadratic fit
 and handles the linear (no turning point) and multi-regressor (error)
-edge cases, that the panel `"mg"` average is exactly the mean (by type) of
-the per-unit turning points recomputed independently, that the panel
-`"pmg"` case correctly restricts to the observed range, and that the
-`plot()` methods run without error and return the same data
-`turning_points()` does.
+edge cases, that the panel `"mg"` turning point is exactly that of the
+group-mean curve itself (matching what `plot()` draws, not an average of
+per-unit turning points), that the panel `"pmg"` case correctly restricts
+to the observed range, that the `plot()` methods run without error, return
+the same data `turning_points()` does, and set axis limits that cover the
+actual data even when an observation falls outside the fitted curve's own
+range (a real clipping bug found and fixed), and that a stationary
+regressor `w`'s HAC standard errors reuse the single bandwidth resolved
+from `[u_ols, Delta(x)]` rather than a freshly-resolved one (the bandwidth
+port bug described above).
 
 ### A cross-platform bug this port found and fixed
 

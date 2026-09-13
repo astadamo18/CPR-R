@@ -89,9 +89,32 @@ fit_fmols_cpr <- function(y, x, orders, w = NULL, deter, kernel, bandwidth,
   # user-controlled option.
   v_dm <- sweep(v, 2, colMeans(v), "-")
 
-  lv <- estimate_lr_var(cbind(u_ols, v_dm), kernel, bandwidth, demean = FALSE)
+  # FM_CPR.m resolves a data-driven bandwidth ("And91"/"NW") *once*, from
+  # [u_ols, Delta(x)] (its `bandw`), and explicitly reuses that same numeric
+  # value for every later HAC step below (S's and S_ols's long-run
+  # variances) -- it does not re-run the automatic bandwidth selection
+  # fresh on each different series. AM92 is the one exception: it always
+  # reruns its own VAR-prewhitened procedure fresh on whatever series it's
+  # given (matching the original's separate AndMon_HAC92() calls), so there
+  # is no single numeric bandwidth to share in that case.
+  if (identical(bandwidth, "AM92")) {
+    bw_shared <- NULL
+    lv <- estimate_lr_var(cbind(u_ols, v_dm), kernel, "AM92", demean = FALSE)
+  } else {
+    bw_shared <- resolve_bandwidth(cbind(u_ols, v_dm), kernel, bandwidth)
+    lv <- lr_var(cbind(u_ols, v_dm), kernel, bw_shared, demean = FALSE)
+  }
   Lr <- lv$Omega
   Dr <- lv$Delta
+
+  # Reuse bw_shared (or, for AM92, rerun fresh) for a long-run variance of
+  # any other series below -- keeps every HAC step consistent with the one
+  # bandwidth FM_CPR.m actually resolves, instead of silently re-selecting
+  # a different bandwidth per series.
+  lr_omega_shared <- function(u) {
+    if (is.null(bw_shared)) return(estimate_lr_var(u, kernel, "AM92", demean = FALSE)$Omega)
+    lr_var(u, kernel, bw_shared, demean = FALSE)$Omega
+  }
 
   Lr_vv <- Lr[-1, -1, drop = FALSE]
   Lr_vu <- Lr[-1, 1]
@@ -128,7 +151,7 @@ fit_fmols_cpr <- function(y, x, orders, w = NULL, deter, kernel, bandwidth,
   # Inference for coefficients on the stationary regressors (HAC-type)
   if (kw > 0) {
     S <- w * matrix(u_plus, Tn, kw)
-    SLr <- estimate_lr_var(S, kernel, bandwidth, demean = FALSE)$Omega
+    SLr <- lr_omega_shared(S)
     varmat0 <- Tn * iww %*% SLr %*% iww
     se_gamma <- sqrt(diag(varmat0))
     t_gamma <- gamma_fm / se_gamma
@@ -155,7 +178,7 @@ fit_fmols_cpr <- function(y, x, orders, w = NULL, deter, kernel, bandwidth,
   # "Naive" OLS-type HAC covariance matrix, for comparison only (ignores
   # cointegration -- inference on beta/delta should use varmat, not this).
   S_ols <- Z * matrix(u_ols, Tn, ncol(Z))
-  SLr_ols <- estimate_lr_var(S_ols, kernel, bandwidth, demean = FALSE)$Omega
+  SLr_ols <- lr_omega_shared(S_ols)
   varmatOLS <- Tn * ZZinv %*% SLr_ols %*% ZZinv
 
   list(
