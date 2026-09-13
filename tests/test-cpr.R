@@ -133,6 +133,44 @@ stopifnot(all(c("const", "trend") %in% names(fit_w$coefficients)))
 stopifnot("w1" %in% names(fit_w$coefficients))
 cat("[OK] stationary regressors + trend deterministic work\n")
 
+## ---- 7b. w's HAC covariance reuses the single bandwidth FM_CPR.m
+## resolves from [u_ols, Delta(x)] (its `bandw`), rather than re-selecting a
+## fresh one from S = w*u_plus. Found by tracing the original source: it
+## explicitly reuses `bandw` for every later HAC step, it never re-runs
+## And91/NW fresh per series. Using a persistent (AR) w makes the two
+## resolved bandwidths differ materially, so this is a real behavior
+## difference to lock in, not a coincidental match either way would give. ----
+set.seed(11)
+w_persistent <- matrix(as.numeric(arima.sim(list(ar = 0.7), n = Tn)), ncol = 1)
+fit_w2 <- cpr(y, x, orders = 2, w = w_persistent, kernel = "ba", bandwidth = "And91")
+
+x7b_mat <- as.matrix(x)
+v7b <- diff(x7b_mat)
+y7b <- y[2:Tn]; x7b <- x7b_mat[2:Tn, , drop = FALSE]; w7b <- w_persistent[2:Tn, , drop = FALSE]
+deter7b <- make_deterministics(Tn - 1, const = TRUE, trend = FALSE)
+poly7b <- gen_var_poly_terms(x7b, 2, stochastic = TRUE)
+J7b <- cbind(deter7b, poly7b$X)
+Z7b <- cbind(w7b, J7b)
+b_ols7b <- solve(crossprod(Z7b), crossprod(Z7b, y7b))
+u_ols7b <- as.numeric(y7b - Z7b %*% b_ols7b)
+v_dm7b <- sweep(v7b, 2, colMeans(v7b), "-")
+bw_shared_expected <- resolve_bandwidth(cbind(u_ols7b, v_dm7b), "ba", "And91")
+
+u_plus7b <- fit_w2$fit$residuals
+S7b <- w7b * matrix(u_plus7b, length(u_plus7b), 1)
+SLr_expected <- lr_var(S7b, "ba", bw_shared_expected, demean = FALSE)$Omega
+iww7b <- solve(crossprod(w7b))
+varmat0_expected <- (Tn - 1) * iww7b %*% SLr_expected %*% iww7b
+se_gamma_expected <- sqrt(diag(varmat0_expected))
+stopifnot(isTRUE(all.equal(unname(fit_w2$fit$se_gamma), unname(se_gamma_expected))))
+
+# ... and confirm the shared bandwidth genuinely differs from what a fresh
+# resolution on S would give -- i.e. the discrepancy this fix closes is
+# real, not a case where both approaches happen to agree anyway:
+bw_fresh <- resolve_bandwidth(S7b, "ba", "And91")
+stopifnot(!isTRUE(all.equal(bw_shared_expected, bw_fresh)))
+cat("[OK] w's HAC standard errors reuse the shared [u_ols, Delta(x)] bandwidth, not a freshly-resolved one from S\n")
+
 ## ---- 8. Multiple integrated regressors with per-column orders (list form) ----
 x2 <- cumsum(rnorm(Tn))
 X2 <- cbind(x1 = x, x2 = x2)
