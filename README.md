@@ -55,8 +55,9 @@ further estimators and a panel version can be added later.
     resolves to internally. See the file-level comment in
     `R/formula-data.R` for why a formula's right-hand side must name
     columns of `data` verbatim (no `log(x1)`-style transformed terms).
-    The returned fit also carries the resolved `y`/`x` (`$y`/`$x`), which
-    `ct_test()`/`pu_test()` reuse when dispatched on the fit directly.
+    The returned fit also carries the resolved `y`/`x`/`w` (`$y`/`$x`/`$w`,
+    the latter `NULL` if there is none), which `ct_test()`/`pu_test()` and
+    `plot()`/`turning_points()` reuse when dispatched on the fit directly.
 - `ct_test()`: KPSS/Shin-type CT cointegration test for a fitted CPR
   (port of `CT_test.m`). An S3 generic: call it directly on a fitted
   `cpr` object -- `ct_test(fit)` -- and `uplus`/`omega`/`m`/`p`/`d` are all
@@ -143,9 +144,15 @@ further estimators and a panel version can be added later.
   A turning point is where the fitted curve's slope in `x` is zero; its
   *location* only depends on the slope coefficients, but the curve's
   *level* (and so the plotted/labeled turning-point value) also needs the
-  constant, which is always included even though it never moves the
-  turning point's x-position -- see the file-level comment in
-  `R/turning-points.R`.
+  constant and, if the fit has a stationary regressor `w`, `w`'s own
+  contribution -- neither ever moves the turning point's x-position, but
+  both are always included in the curve's level. `w` is evaluated at its
+  own sample mean, not implicitly at `w = 0` (0 can be a wild extrapolation
+  whenever it falls outside `w`'s actually observed range -- e.g. an
+  exchange-rate index that never comes near zero, which is exactly what
+  motivated this: a `GNIPC ~ NOIP + REER` fit's curve floated several units
+  above the entire data cloud before this fix). See the file-level comment
+  in `R/turning-points.R`.
   - `turning_points(fit)`: an S3 generic. For a `cpr` fit, returns a data
     frame of `x`/`y`/`type` (`"maximum"`/`"minimum"`/`"inflection"`),
     restricted by default to turning points inside the observed range of
@@ -329,7 +336,9 @@ actual data even when an observation falls outside the fitted curve's own
 range (a real clipping bug found and fixed), and that a stationary
 regressor `w`'s HAC standard errors reuse the single bandwidth resolved
 from `[u_ols, Delta(x)]` rather than a freshly-resolved one (the bandwidth
-port bug described above).
+port bug described above), and that `turning_points()`/`plot()` include a
+stationary regressor `w`'s contribution at `w`'s own mean rather than
+implicitly at `w = 0`.
 
 ### A cross-platform bug this port found and fixed
 

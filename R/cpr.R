@@ -77,10 +77,12 @@ make_deterministics <- function(Tn, const = TRUE, trend = FALSE) {
 #' this demeaning is hardwired and not a user-controlled option.
 #'
 #' @return An object of class `"cpr"`, with `print()` and `summary()`
-#'   methods. Also carries the resolved `y`/`x` (post `data`/formula
-#'   lookup, pre any estimator-specific truncation) as `$y`/`$x`, so other
-#'   functions needing the original series (e.g. [pu_test()]) can be
-#'   dispatched straight off the fit.
+#'   methods. Also carries the resolved `y`/`x`/`w` (post `data`/formula
+#'   lookup, pre any estimator-specific truncation, `$w` is `NULL` if there
+#'   is none) as `$y`/`$x`/`$w`, so other functions needing the original
+#'   series (e.g. [pu_test()], or [plot()]/[turning_points()] evaluating
+#'   `w`'s contribution at its own mean) can be dispatched straight off the
+#'   fit.
 #' @export
 cpr <- function(y, x = NULL, orders, w = NULL, deter = NULL,
                  estimator = "FMOLS",
@@ -166,7 +168,7 @@ cpr <- function(y, x = NULL, orders, w = NULL, deter = NULL,
       residuals_ols = fit$residuals_ols,
       n_obs = fit$n_obs,
       kw = fit$kw, kd = fit$kd, m = fit$m,
-      y = as.numeric(y), x = x,
+      y = as.numeric(y), x = x, w = w,
       fit = fit
     ),
     class = "cpr"

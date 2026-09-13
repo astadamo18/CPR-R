@@ -1,8 +1,9 @@
 # plot() methods for turning-point analysis: the fitted curve of a
 # cointegrating polynomial regression against its (single) integrated
 # regressor, with turning point(s) marked and labeled. See the file-level
-# comment in R/turning-points.R for why the constant is always included in
-# the curve even though it never moves a turning point's x-location.
+# comment in R/turning-points.R for why the constant -- and any stationary
+# regressor w's contribution at w's own mean -- is always included in the
+# curve even though neither ever moves a turning point's x-location.
 
 #' Plot the fitted curve and turning point(s) of a cointegrating polynomial
 #' regression
@@ -29,7 +30,7 @@ plot.cpr <- function(x, y = NULL, n = 200, x_range = NULL, show_data = TRUE,
   xname <- colnames(object$x)[1]
   powers1 <- object$fit$powers[[1]]
   beta <- unname(object$coefficients[paste0(xname, "^", powers1)])
-  const <- get_const_coef(object$coefficients)
+  const <- get_level_offset(object$coefficients, object$w)
 
   xr <- if (is.null(x_range)) range(object$x[, 1]) else x_range
   grid <- seq(xr[1], xr[2], length.out = n)
@@ -62,8 +63,8 @@ plot.cpr <- function(x, y = NULL, n = 200, x_range = NULL, show_data = TRUE,
 #' polynomial regression
 #'
 #' For `type = "mg"`: the group-mean curve (using [pcpr()]'s own
-#' group-mean coefficients, constant included), with its own turning
-#' point marked -- always exactly on the drawn curve (see
+#' group-mean coefficients, constant and any `w` included), with its own
+#' turning point marked -- always exactly on the drawn curve (see
 #' [turning_points.pcpr()]). For `type = "pmg"`: the single pooled curve,
 #' using the average implied fixed effect as its constant (see
 #' [turning_points.pcpr()]).
@@ -94,7 +95,7 @@ plot_pcpr_mg <- function(object, n, digits, xlab, ylab, main, ...) {
 
   xr <- range(unlist(lapply(unit_fits, function(f) f$x[, 1])))
   beta_mg <- unname(object$coefficients[paste0(xname, "^", powers1)])
-  const_mg <- get_const_coef(object$coefficients)
+  const_mg <- get_level_offset(object$coefficients, pooled_w(unit_fits))
 
   grid <- seq(xr[1], xr[2], length.out = n)
   curve_y <- const_mg + as.numeric(gen_power_reg(grid, powers1) %*% beta_mg)

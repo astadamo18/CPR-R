@@ -525,6 +525,35 @@ stopifnot(!is.null(err_tp_multi))
 stopifnot(grepl("single integrated regressor", conditionMessage(err_tp_multi)))
 cat("[OK] turning_points.cpr() matches the closed-form quadratic vertex, and handles the linear/multi-regressor edge cases\n")
 
+# A stationary regressor w's contribution is included in the curve's level,
+# evaluated at w's own mean -- not implicitly at w = 0, which can be a
+# wild extrapolation whenever 0 falls outside w's actually observed range
+# (found via a real GNIPC ~ NOIP + REER fit, where REER never comes near
+# zero). The turning point's *location* is still unaffected by w, only
+# its level.
+set.seed(23)
+w_tp <- matrix(rnorm(Tn, mean = 50, sd = 5), ncol = 1)  # never near zero
+fit_w_tp <- cpr(y, x, orders = 2, w = w_tp, kernel = "ba", bandwidth = "And91")
+tp_w <- turning_points(fit_w_tp)
+b1_w <- fit_w_tp$coefficients[["x1^1"]]
+b2_w <- fit_w_tp$coefficients[["x1^2"]]
+expected_x_w <- -b1_w / (2 * b2_w)
+stopifnot(nrow(tp_w) == 1)
+stopifnot(isTRUE(all.equal(tp_w$x, expected_x_w)))  # location: unaffected by w
+expected_level_w <- fit_w_tp$coefficients[["const"]] + fit_w_tp$coefficients[["w1"]] * mean(w_tp)
+expected_y_w <- expected_level_w + b1_w * tp_w$x + b2_w * tp_w$x^2
+stopifnot(isTRUE(all.equal(tp_w$y, expected_y_w)))
+# ... and this genuinely differs from the old (implicit w = 0) level:
+stopifnot(!isTRUE(all.equal(expected_level_w, fit_w_tp$coefficients[["const"]])))
+# plot.cpr() must use the exact same level (checked via its invisible return):
+plot_dev_w <- tempfile(fileext = ".pdf")
+grDevices::pdf(plot_dev_w)
+tp_w_plot <- plot(fit_w_tp)
+grDevices::dev.off()
+unlink(plot_dev_w)
+stopifnot(isTRUE(all.equal(tp_w_plot, tp_w)))
+cat("[OK] turning_points()/plot() include a stationary regressor w's contribution at w's own mean, not implicitly at w = 0\n")
+
 # Panel mean-group: the reported turning point is that of the group-mean
 # curve itself (pcpr()'s own group-mean coefficients, constant included) --
 # the same closed-form vertex check as the single-fit case above, not an
