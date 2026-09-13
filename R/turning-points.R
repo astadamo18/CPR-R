@@ -1,16 +1,20 @@
 # Turning-point analysis for cointegrating polynomial regressions.
 #
-# For a fitted CPR y_t = const + beta_1*x_t + beta_2*x_t^2 + ... (the
-# stationary regressors `w` and any trend, if present, are deliberately left
-# out of this curve -- there is no single canonical value to hold them at),
+# For a fitted CPR y_t = const + gamma'w_t + beta_1*x_t + beta_2*x_t^2 + ...,
 # a "turning point" is a value x* where d(prediction)/dx = 0: the standard
 # EKC-style interpretation of a quadratic/cubic cointegrating polynomial
 # relationship (e.g. de Jong & Wagner's income/emissions curve). Turning
 # point *location* only depends on the slope coefficients (beta_1, beta_2,
-# ...); the curve's *level* additionally needs the constant, which never
-# moves where the turning point sits on the x-axis but is still needed to
-# plot (and label) the right y-value there -- hence including it explicitly
-# everywhere below, even though it "does not matter" for x* itself.
+# ...); the curve's *level* additionally needs the constant and, if the fit
+# has stationary regressors `w`, their contribution too -- neither ever
+# moves where the turning point sits on the x-axis, but both are still
+# needed to plot (and label) the right y-value there. `w` is evaluated at
+# its own sample mean, not implicitly at w = 0 (0 can be a wild
+# extrapolation whenever it falls outside w's actually observed range,
+# e.g. an exchange-rate index that never comes near zero) -- the usual
+# "held at the mean" convention for a partial-effect plot with control
+# variables. Any deterministic trend, if present, is still left out: unlike
+# `w`, there is no natural single value to hold a time index at.
 
 #' Derivative-root turning points of a polynomial in a single regressor
 #'
@@ -72,6 +76,30 @@ get_const_coef <- function(coefficients) {
   0
 }
 
+#' Curve level: the constant, plus w's contribution at w's own mean
+#'
+#' `const + gamma' * colMeans(w)` -- `0` in place of the mean whenever
+#' there is no `w` (identical to [get_const_coef()] then). See the
+#' file-level comment above for why the mean, not 0, is the right value to
+#' hold a stationary regressor at when it never has none.
+#' @keywords internal
+get_level_offset <- function(coefficients, w = NULL) {
+  offset <- get_const_coef(coefficients)
+  if (!is.null(w)) {
+    gamma <- unname(coefficients[colnames(w)])
+    offset <- offset + sum(gamma * colMeans(w))
+  }
+  offset
+}
+
+#' Row-bind each unit's own `w` into one pooled matrix, or NULL if there is
+#' no `w` in this panel
+#' @keywords internal
+pooled_w <- function(unit_fits) {
+  if (is.null(unit_fits[[1]]$w)) return(NULL)
+  do.call(rbind, lapply(unit_fits, function(f) f$w))
+}
+
 #' Turning point(s) of a fitted cointegrating polynomial regression
 #'
 #' Where the fitted curve's slope with respect to the (single) integrated
@@ -100,7 +128,7 @@ turning_points.cpr <- function(object, x_range = "data", ...) {
   xname <- colnames(object$x)[1]
   powers1 <- object$fit$powers[[1]]
   beta <- unname(object$coefficients[paste0(xname, "^", powers1)])
-  const <- get_const_coef(object$coefficients)
+  const <- get_level_offset(object$coefficients, object$w)
 
   if (identical(x_range, "data")) x_range <- range(object$x[, 1])
   poly_turning_points(beta, powers1, const = const, x_range = x_range)
@@ -109,13 +137,15 @@ turning_points.cpr <- function(object, x_range = "data", ...) {
 #' @details
 #' For `type = "mg"`, the turning point is that of the group-mean curve
 #' itself -- [pcpr()]'s own group-mean coefficients (`object$coefficients`,
-#' constant included) plugged into [poly_turning_points()], restricted to
-#' the observed x-range pooled across all units. This is the turning point
-#' of the curve [plot.pcpr()] actually draws (not the average of each
-#' unit's own turning point computed from its own coefficients -- those two
-#' generally differ, since the turning point `x* = -beta1/(2*beta2)` is a
-#' nonlinear function of the coefficients and averaging coefficients first
-#' does not commute with solving for `x*` first).
+#' constant included, and any `w`'s contribution evaluated at its pooled
+#' mean across all units -- see [get_level_offset()]) plugged into
+#' [poly_turning_points()], restricted to the observed x-range pooled
+#' across all units. This is the turning point of the curve [plot.pcpr()]
+#' actually draws (not the average of each unit's own turning point
+#' computed from its own coefficients -- those two generally differ, since
+#' the turning point `x* = -beta1/(2*beta2)` is a nonlinear function of the
+#' coefficients and averaging coefficients first does not commute with
+#' solving for `x*` first).
 #'
 #' For `type = "pmg"`, there is a single common slope, so at most one
 #' turning point of each type. The pooled model has no single estimated
@@ -149,7 +179,7 @@ mg_turning_points <- function(object) {
   xname <- colnames(unit_fits[[1]]$x)[1]
   powers1 <- unit_fits[[1]]$fit$powers[[1]]
   beta_mg <- unname(object$coefficients[paste0(xname, "^", powers1)])
-  const_mg <- get_const_coef(object$coefficients)
+  const_mg <- get_level_offset(object$coefficients, pooled_w(unit_fits))
 
   x_range <- range(unlist(lapply(unit_fits, function(f) f$x[, 1])))
   poly_turning_points(beta_mg, powers1, const = const_mg, x_range = x_range)
