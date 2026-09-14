@@ -517,7 +517,7 @@ stopifnot(tp_cz$type == (if (b2 > 0) "minimum" else "maximum"))
 fit_cz_linear <- cpr(cz$NOIP / 1000, cz$GNIPC / 1000, orders = 1, kernel = "ba", bandwidth = "And91")
 tp_linear <- turning_points(fit_cz_linear)
 stopifnot(nrow(tp_linear) == 0)
-stopifnot(identical(names(tp_linear), c("x", "y", "type")))
+stopifnot(identical(names(tp_linear), c("x", "y", "type", "interior")))
 
 # turning_points() only supports a single integrated regressor.
 err_tp_multi <- tryCatch({ turning_points(fit_multi); NULL }, error = function(e) e)
@@ -583,18 +583,21 @@ cat("[OK] turning_points.pcpr(type='mg') is the group-mean curve's own turning p
 
 # Panel pooled (pmg): a single common slope, so at most one turning point
 # per type; here it happens to fall outside the observed x-range for both
-# effects specifications, which is a real (if unexciting) finding, not a
-# bug -- checked directly against the unrestricted root.
+# effects specifications, which is a real (if unexciting) finding -- still
+# reported, flagged interior = FALSE, not dropped just for being outside
+# the data (checked directly against the unrestricted root).
 fit_pmg2 <- pcpr(panel$NOIP / 1000, panel$GNIPC / 1000, id = panel$COUNTRY, time = panel$YEAR,
                   orders = 2, kernel = "ba", bandwidth = "And91", type = "pmg")
 beta_pmg <- unname(fit_pmg2$coefficients[c("x1^1", "x1^2")])
 expected_root_pmg <- -beta_pmg[1] / (2 * beta_pmg[2])
 tp_pmg_unrestricted <- poly_turning_points(beta_pmg, c(1, 2), const = 0, x_range = NULL)
 stopifnot(isTRUE(all.equal(tp_pmg_unrestricted$x, expected_root_pmg)))
+stopifnot(is.na(tp_pmg_unrestricted$interior))  # no x_range given -> not classified
 tp_pmg <- turning_points(fit_pmg2)
-stopifnot(identical(names(tp_pmg), c("x", "y", "type")))
-stopifnot(nrow(tp_pmg) == 0)  # outside the observed range for this data
-cat("[OK] turning_points.pcpr(type='pmg') uses the single common-slope root, restricted to the observed range\n")
+stopifnot(identical(names(tp_pmg), c("x", "y", "type", "interior")))
+stopifnot(nrow(tp_pmg) == 1)  # reported even though it's outside the observed range
+stopifnot(isTRUE(!tp_pmg$interior))
+cat("[OK] turning_points.pcpr(type='pmg') reports the single common-slope root even when it's outside the observed range (flagged, not dropped)\n")
 
 # The pmg constant reconstruction (pmg_average_const()) must use each
 # unit's own *raw* y/x, not anything derived from the demeaned/within
@@ -679,5 +682,18 @@ unlink(plot_dev_edge)
 stopifnot(min(fit_edge$y) >= usr[3] && max(fit_edge$y) <= usr[4])
 stopifnot(min(fit_edge$x) >= usr[1] && max(fit_edge$x) <= usr[2])
 cat("[OK] plot.cpr()'s axis limits cover the actual data even when a point falls outside the fitted curve's own range\n")
+
+# An extrapolated turning point (outside the observed x-range, like
+# fit_pmg2's above) must still actually appear on the plot -- the x-axis
+# has to extend far enough to show it, not just report it in the data.
+stopifnot(!tp_pmg$interior)  # sanity: this really is the exterior case
+plot_dev_extrap <- tempfile(fileext = ".pdf")
+grDevices::pdf(plot_dev_extrap)
+plot(fit_pmg2)
+usr_extrap <- graphics::par("usr")
+grDevices::dev.off()
+unlink(plot_dev_extrap)
+stopifnot(tp_pmg$x >= usr_extrap[1] && tp_pmg$x <= usr_extrap[2])
+cat("[OK] plot() extends the axis to actually show a turning point outside the observed data, not just report it\n")
 
 cat("\nAll tests passed.\n")

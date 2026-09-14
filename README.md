@@ -154,22 +154,29 @@ further estimators and a panel version can be added later.
   above the entire data cloud before this fix). See the file-level comment
   in `R/turning-points.R`.
   - `turning_points(fit)`: an S3 generic. For a `cpr` fit, returns a data
-    frame of `x`/`y`/`type` (`"maximum"`/`"minimum"`/`"inflection"`),
-    restricted by default to turning points inside the observed range of
-    `x` (interior turning points only -- pass `x_range = NULL` to keep
-    extrapolated roots too). Zero rows for a purely linear fit. Only
-    supports a single integrated regressor.
+    frame of `x`/`y`/`type` (`"maximum"`/`"minimum"`/`"inflection"`)/
+    `interior`. `interior` flags whether `x` falls inside the observed
+    range of `x` (`x_range = "data"`, the default) -- a turning point
+    outside it (e.g. pooling a common slope across panel units easily
+    pushes the implied vertex beyond what any single unit's data covers)
+    is still reported, never silently dropped just for being an
+    extrapolation; pass `x_range = NULL` to skip the classification
+    entirely (`interior` is `NA`). Zero rows only when there is genuinely
+    no turning point at all (a purely linear fit). Only supports a single
+    integrated regressor.
   - For a `pcpr` fit: `type = "mg"` reports the turning point of the
     group-mean curve itself -- [`pcpr()`]'s own group-mean coefficients
     (constant included) plugged into the same closed-form root-finding as
-    `cpr`, restricted to the observed x-range pooled across units. This is
+    `cpr`, flagged `interior`/exterior against the observed x-range pooled
+    across units but, again, never dropped for lying outside it. This is
     deliberately *not* the average of each unit's own (individually
     computed) turning point: since `x* = -beta1/(2*beta2)` is a nonlinear
     function of the coefficients, averaging coefficients first and solving
     for `x*` first generally give different answers, and the group-mean
     version is the one that always sits exactly on the curve `plot()`
     actually draws. `type = "pmg"`
-    has a single common slope, so at most one turning point per type; the
+    has a single common slope, so at most one turning point per type
+    (commonly an exterior one -- see below); the
     pooled model has no single estimated constant (fixed effects absorb
     it), so its curve uses the average, across units, of each one's own
     implied fixed effect instead -- reconstructed from each unit's own
@@ -182,6 +189,13 @@ further estimators and a panel version can be added later.
     scatter; `pcpr(type = "mg")`: the group-mean curve only; `pcpr(type =
     "pmg")`: the single pooled curve) with turning point(s) marked and
     labeled, and invisibly returns the same data `turning_points()` would.
+    An exterior turning point is never hidden: the curve is extended just
+    far enough to reach it, drawn dashed beyond the observed data (solid
+    within it) so the extrapolated part reads as projection rather than
+    observed relationship, and its label/marker are colored differently
+    ("... (extrapolated)", orange instead of red) -- see the pooled-panel
+    (`pmg`) example, where the common-slope vertex commonly falls outside
+    every unit's own data.
 - Homogeneity tests are not implemented yet.
 
 ## Installation
@@ -278,10 +292,12 @@ confirming it gives identical fits to the vector interface, then runs
 
 `examples/example_turning_points.R` computes and plots EKC-style turning
 points for Czechia alone, the mean-group panel, and the pooled panel --
-including the pooled case's honest empty result (its common-slope curve's
-vertex falls outside every country's observed GNIPC range in this data, so
-there is no interior turning point to report). Writes PNGs into `examples/`
-(not tracked by git; see `.gitignore`) since it's meant to run headlessly.
+including the pooled case's extrapolated turning point (its common-slope
+curve's vertex falls outside every country's observed GNIPC range in this
+data, `interior = FALSE`), which is still reported and still drawn --
+dashed, past the last observed data point, with an "(extrapolated)" label
+-- rather than silently omitted. Writes PNGs into `examples/` (not tracked
+by git; see `.gitignore`) since it's meant to run headlessly.
 
 `examples/example_pcpr_pmg.R` fits the pooled panel model (`type = "pmg"`)
 on the same CEE panel, both `oneway` and `twoway`, and compares its
@@ -336,9 +352,12 @@ actual data even when an observation falls outside the fitted curve's own
 range (a real clipping bug found and fixed), and that a stationary
 regressor `w`'s HAC standard errors reuse the single bandwidth resolved
 from `[u_ols, Delta(x)]` rather than a freshly-resolved one (the bandwidth
-port bug described above), and that `turning_points()`/`plot()` include a
+port bug described above), that `turning_points()`/`plot()` include a
 stationary regressor `w`'s contribution at `w`'s own mean rather than
-implicitly at `w = 0`.
+implicitly at `w = 0`, and that a turning point outside the observed
+x-range is still reported (flagged `interior = FALSE`, not dropped) and
+still actually drawn on the plot -- extended (dashed) past the observed
+data rather than silently omitted.
 
 ### A cross-platform bug this port found and fixed
 

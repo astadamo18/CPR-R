@@ -23,17 +23,20 @@
 #' @param powers Integer vector of the powers `beta` corresponds to.
 #' @param const Constant (intercept) to add to the curve's level; `0` if
 #'   there is none to add.
-#' @param x_range Optional length-2 numeric vector; turning points outside
-#'   this range are dropped (interior turning points only). `NULL` keeps
-#'   every real root.
+#' @param x_range Optional length-2 numeric vector; every real turning point
+#'   is still returned, but flagged via the `interior` column according to
+#'   whether it falls inside this range -- never silently dropped just for
+#'   being an extrapolation. `NULL` skips the interior/exterior
+#'   classification entirely (`interior` is `NA` for every row).
 #' @return A data frame with columns `x`, `y` (curve value at `x`, including
-#'   `const`), and `type` (`"maximum"`, `"minimum"`, or `"inflection"`),
-#'   sorted by `x`. Zero rows if there is no turning point (e.g. a purely
-#'   linear relationship, `max(powers) < 2`).
+#'   `const`), `type` (`"maximum"`, `"minimum"`, or `"inflection"`), and
+#'   `interior` (logical: is `x` inside `x_range`? `NA` if `x_range` is
+#'   `NULL`), sorted by `x`. Zero rows if there is no turning point (e.g. a
+#'   purely linear relationship, `max(powers) < 2`).
 #' @keywords internal
 poly_turning_points <- function(beta, powers, const = 0, x_range = NULL) {
   stopifnot(length(beta) == length(powers))
-  none <- data.frame(x = numeric(0), y = numeric(0), type = character(0))
+  none <- data.frame(x = numeric(0), y = numeric(0), type = character(0), interior = logical(0))
   max_p <- max(powers)
   if (max_p < 2) return(none)
 
@@ -52,11 +55,6 @@ poly_turning_points <- function(beta, powers, const = 0, x_range = NULL) {
   real_roots <- sort(unique(Re(roots)[is_real]))
   if (length(real_roots) == 0) return(none)
 
-  if (!is.null(x_range)) {
-    real_roots <- real_roots[real_roots >= min(x_range) & real_roots <= max(x_range)]
-  }
-  if (length(real_roots) == 0) return(none)
-
   curve_value <- function(xv) const + sum(beta * xv^powers)
   second_deriv <- function(xv) {
     sum(ifelse(powers < 2, 0, powers * (powers - 1) * beta * xv^pmax(powers - 2, 0)))
@@ -65,8 +63,10 @@ poly_turning_points <- function(beta, powers, const = 0, x_range = NULL) {
   d2 <- vapply(real_roots, second_deriv, numeric(1))
   type <- ifelse(d2 > 1e-8, "minimum", ifelse(d2 < -1e-8, "maximum", "inflection"))
   y <- vapply(real_roots, curve_value, numeric(1))
+  interior <- if (is.null(x_range)) rep(NA, length(real_roots)) else
+    (real_roots >= min(x_range) & real_roots <= max(x_range))
 
-  data.frame(x = real_roots, y = y, type = type, row.names = NULL)
+  data.frame(x = real_roots, y = y, type = type, interior = interior, row.names = NULL)
 }
 
 #' Constant (intercept) coefficient of a fit, or 0 if there is none
@@ -114,10 +114,13 @@ turning_points <- function(object, ...) {
   UseMethod("turning_points")
 }
 
-#' @param x_range Restrict to turning points inside this x-range (a length-2
-#'   vector); `"data"` (default) uses the observed range of the fitted
-#'   regressor, i.e. interior turning points only. Pass `NULL` to keep every
-#'   real root, including extrapolated ones outside the observed data.
+#' @param x_range Range to classify turning points as interior vs.
+#'   extrapolated (a length-2 vector); `"data"` (default) uses the observed
+#'   range of the fitted regressor. Every real turning point is returned
+#'   either way -- an extrapolated one (`interior = FALSE`) is never
+#'   dropped, just flagged, so it still shows up here and in `plot()`
+#'   rather than silently disappearing. Pass `x_range = NULL` to skip the
+#'   classification (`interior` is `NA` for every row).
 #' @rdname turning_points
 #' @export
 turning_points.cpr <- function(object, x_range = "data", ...) {
@@ -139,8 +142,9 @@ turning_points.cpr <- function(object, x_range = "data", ...) {
 #' itself -- [pcpr()]'s own group-mean coefficients (`object$coefficients`,
 #' constant included, and any `w`'s contribution evaluated at its pooled
 #' mean across all units -- see [get_level_offset()]) plugged into
-#' [poly_turning_points()], restricted to the observed x-range pooled
-#' across all units. This is the turning point of the curve [plot.pcpr()]
+#' [poly_turning_points()], flagged `interior`/exterior against the
+#' observed x-range pooled across all units but never dropped for lying
+#' outside it. This is the turning point of the curve [plot.pcpr()]
 #' actually draws (not the average of each unit's own turning point
 #' computed from its own coefficients -- those two generally differ, since
 #' the turning point `x* = -beta1/(2*beta2)` is a nonlinear function of the
@@ -148,7 +152,11 @@ turning_points.cpr <- function(object, x_range = "data", ...) {
 #' solving for `x*` first).
 #'
 #' For `type = "pmg"`, there is a single common slope, so at most one
-#' turning point of each type. The pooled model has no single estimated
+#' turning point of each type -- also reported, and flagged `interior`,
+#' even when it falls outside every unit's observed range (a common
+#' outcome: enforcing one common slope across units easily pushes the
+#' implied vertex beyond the data any single unit actually has). The
+#' pooled model has no single estimated
 #' constant (individual, and possibly time, fixed effects absorb it
 #' instead), so the constant used for the curve's level is the average,
 #' across units, of that unit's own implied fixed effect `alpha_i =
