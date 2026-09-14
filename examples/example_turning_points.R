@@ -66,14 +66,16 @@ fit_pmg <- pcpr(noip1000 ~ gnipc1000, data = panel, id = COUNTRY, time = YEAR,
 
 cat("=== turning_points(fit_pmg) ===\n")
 print(turning_points(fit_pmg))
-## Empty here: the pooled model's single common-slope curve has its vertex
-## outside the observed GNIPC range for every country, so there is no
-## *interior* turning point to report -- a real finding (this data does not
-## support a common EKC-style turning point under full slope pooling), not
-## a bug. The pooled model also has no single estimated constant (fixed
-## effects absorb it); the curve/label instead use the average, across
-## countries, of each one's own implied fixed effect -- see the file-level
-## comment in R/turning-points.R.
+## interior = FALSE here: the pooled model's single common-slope curve has
+## its vertex outside the observed GNIPC range for every country -- a real
+## finding (this data does not support a common EKC-style turning point
+## under full slope pooling), not a bug, and it's still reported (not
+## dropped) and still plotted, dashed past the last observed data point
+## with an "(extrapolated)" label, rather than silently disappearing. The
+## pooled model also has no single estimated constant (fixed effects
+## absorb it); the curve/label instead use the average, across countries,
+## of each one's own implied fixed effect -- see the file-level comment in
+## R/turning-points.R.
 grDevices::png("examples/turning_points_pmg.png", width = 800, height = 600)
 plot(fit_pmg)
 grDevices::dev.off()
