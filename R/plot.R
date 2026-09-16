@@ -57,12 +57,18 @@ draw_curve <- function(grid, curve_y, xr_data) {
 #' @param digits Rounding used in the turning-point labels.
 #' @param xlab,ylab,main Plot labels; `xlab`/`main` default sensibly if left
 #'   `NULL`.
+#' @param id Optional label identifying this fit (e.g. a country/unit name),
+#'   appended to `main` as `"<main> - <id>"`. Purely cosmetic -- has no
+#'   effect on the fit or the returned turning-point data. `NULL` (default)
+#'   leaves `main` as-is. Uses a plain hyphen rather than an em dash: some
+#'   graphics devices (e.g. the default bitmap `png()`) fall back to "..."
+#'   for characters their font doesn't cover.
 #' @param ... Passed on to the underlying [plot()] call.
 #' @return Invisibly, the turning-point data frame (see [turning_points()]).
 #' @export
 plot.cpr <- function(x, y = NULL, n = 200, x_range = NULL, show_data = TRUE,
                       digits = 3, xlab = NULL, ylab = "prediction",
-                      main = "Turning point analysis", ...) {
+                      main = "Turning point analysis", id = NULL, ...) {
   object <- x
   if (ncol(object$x) != 1) {
     stop("plot.cpr() only supports a fit with a single integrated regressor.", call. = FALSE)
@@ -80,6 +86,7 @@ plot.cpr <- function(x, y = NULL, n = 200, x_range = NULL, show_data = TRUE,
   curve_y <- const + as.numeric(gen_power_reg(grid, powers1) %*% beta)
 
   if (is.null(xlab)) xlab <- xname
+  if (!is.null(id)) main <- paste0(main, " - ", id)
   dots <- list(...)
   # The axis limits must cover the actual data too, not just the fitted
   # curve -- an observation's residual can easily put it outside the
