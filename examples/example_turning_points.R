@@ -35,8 +35,10 @@ print(turning_points(fit_cz))
 ## the turning point's x-location (-b1/(2*b2)) never depends on it; leaving
 ## it out would draw a curve at the wrong *level* while still marking the
 ## turning point at the right x.
+## `id` labels a single-fit plot's title (e.g. which country it's for) --
+## purely cosmetic, no effect on the fit or the returned data.
 grDevices::png("examples/turning_points_single.png", width = 800, height = 600)
-plot(fit_cz)
+plot(fit_cz, id = "Czechia")
 grDevices::dev.off()
 cat("Wrote examples/turning_points_single.png\n\n")
 

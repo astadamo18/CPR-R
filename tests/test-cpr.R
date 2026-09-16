@@ -662,6 +662,17 @@ stopifnot(!is.null(err_plot_multi))
 stopifnot(grepl("single integrated regressor", conditionMessage(err_plot_multi)))
 cat("[OK] plot.cpr()/plot.pcpr() run without error and return the same turning-point data as turning_points()\n")
 
+# plot.cpr()'s optional `id` label is purely cosmetic (appended to the plot
+# title) -- must not change the returned turning-point data, and must
+# default to leaving the title alone.
+plot_dev_id <- tempfile(fileext = ".pdf")
+grDevices::pdf(plot_dev_id)
+tp_cz_id <- plot(fit_cz, id = "Czechia")
+grDevices::dev.off()
+unlink(plot_dev_id)
+stopifnot(isTRUE(all.equal(tp_cz_id, tp_cz)))
+cat("[OK] plot.cpr(id = ...) labels the plot without changing the returned data\n")
+
 # plot.cpr()'s axis limits must cover the actual data, not just the fitted
 # curve: an observation's residual can put it outside the curve's own
 # range (e.g. a noisy point right at the edge of x), and plot()'s first

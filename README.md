@@ -195,7 +195,13 @@ further estimators and a panel version can be added later.
     observed relationship, and its label/marker are colored differently
     ("... (extrapolated)", orange instead of red) -- see the pooled-panel
     (`pmg`) example, where the common-slope vertex commonly falls outside
-    every unit's own data.
+    every unit's own data. For a single fit (`cpr`, not the panel types),
+    `plot(fit, id = "Hungary")` appends a cosmetic label to the title
+    (`"Turning point analysis - Hungary"`) -- purely for identifying which
+    unit a one-off plot is for; it doesn't affect the fit or the returned
+    data. Uses a plain hyphen rather than an em dash, since some graphics
+    devices (e.g. the default bitmap `png()`) fall back to "..." for
+    characters their font doesn't cover.
 - Homogeneity tests are not implemented yet.
 
 ## Installation
