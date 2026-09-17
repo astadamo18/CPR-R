@@ -6,7 +6,7 @@
 # load time, so fmols.R must be sourced first).
 source_order <- c(
   "lr-weights.R", "lr-var.R", "bandwidth.R", "prewhiten.R", "poly-terms.R",
-  "fmols.R", "dols.R", "estimators.R", "formula-data.R", "cpr.R", "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R",
+  "fmols.R", "dols.R", "imols.R", "estimators.R", "formula-data.R", "cpr.R", "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R",
   "turning-points.R", "plot.R", "methods.R"
 )
 invisible(lapply(file.path("R", source_order), source))
@@ -72,15 +72,13 @@ stopifnot(grepl("not defined", conditionMessage(err)))
 cat("[OK] invalid bandwidth/kernel combination errors informatively\n")
 
 ## ---- 6. Unimplemented estimators fail with a clear, structured message ----
-for (est in c("MOLS", "IMOLS")) {
-  err <- tryCatch({
-    cpr(y, x, orders = 2, estimator = est)
-    NULL
-  }, error = function(e) e)
-  stopifnot(!is.null(err))
-  stopifnot(grepl("not implemented", conditionMessage(err)))
-}
-cat("[OK] MOLS/IMOLS raise clear 'not implemented' errors\n")
+err <- tryCatch({
+  cpr(y, x, orders = 2, estimator = "MOLS")
+  NULL
+}, error = function(e) e)
+stopifnot(!is.null(err))
+stopifnot(grepl("not implemented", conditionMessage(err)))
+cat("[OK] MOLS raises a clear 'not implemented' error\n")
 
 ## ---- 6b. DOLS: plain OLS (n_lag = n_lead = 0) matches OLS on the same design ----
 fit_dols0 <- cpr(y, x, orders = 2, estimator = "DOLS", n_lag = 0, n_lead = 0)
@@ -123,6 +121,76 @@ stopifnot(ll[1, 2] == 0)
 stopifnot(identical(as.numeric(ll[1:9, 3]), as.numeric(v_ll[2:10, 1])))  # lead1
 stopifnot(ll[10, 3] == 0)
 cat("[OK] gen_lead_lag matches the expected lag/lead alignment\n")
+
+## ---- 6f. IMOLS: coefficient recovery, `w` rejection, and an independent
+## re-derivation of the partial-sum-and-augment point estimator plus its
+## "up to Lambda^2" sandwich covariance matrix (Vhat_NEW.m), matching
+## fit_imols_cpr()'s own computation exactly but written independently
+## (a plain loop here vs. apply()/rbind() in production) so a
+## transcription bug wouldn't just be replicated by both. ----
+fit_imols <- cpr(y, x, orders = 2, estimator = "IMOLS", kernel = "ba", bandwidth = "And91")
+stopifnot(inherits(fit_imols, "cpr"))
+stopifnot(all(is.finite(fit_imols$coefficients)))
+stopifnot(fit_imols$fit$n_obs == Tn)  # no truncation, unlike FM-OLS
+stopifnot(abs(fit_imols$coefficients["const"] - 2) < 2)
+stopifnot(abs(fit_imols$coefficients["x1^1"] - 0.5) < 0.5)
+stopifnot(abs(fit_imols$coefficients["x1^2"] - 0.1) < 0.2)
+
+err_imols_w <- tryCatch({
+  cpr(y, x, orders = 2, estimator = "IMOLS", w = matrix(rnorm(Tn), ncol = 1))
+  NULL
+}, error = function(e) e)
+stopifnot(!is.null(err_imols_w))
+stopifnot(grepl("does not support stationary regressors", conditionMessage(err_imols_w)))
+
+# Independent re-derivation:
+deter_im <- make_deterministics(Tn, const = TRUE, trend = FALSE)
+poly_im <- gen_var_poly_terms(matrix(x, ncol = 1), 2, stochastic = FALSE)
+X_im <- poly_im$X
+Z_im <- cbind(deter_im, X_im)
+b_ols_im <- solve(crossprod(Z_im), crossprod(Z_im, y))
+u_ols_im <- as.numeric(y - Z_im %*% b_ols_im)
+v_im <- diff(x)
+v_dm_im <- v_im - mean(v_im)
+lv_im <- lr_var(cbind(u_ols_im[2:Tn], v_dm_im), "ba",
+                resolve_bandwidth(cbind(u_ols_im[2:Tn], v_dm_im), "ba", "And91"), demean = FALSE)
+Lr_im <- lv_im$Omega
+Omega_udotv_expected <- as.numeric(Lr_im[1, 1] - Lr_im[1, 2] * Lr_im[2, 1] / Lr_im[2, 2])
+stopifnot(isTRUE(all.equal(fit_imols$fit$Omega_udotv, Omega_udotv_expected)))
+
+Sy_im <- cumsum(y)
+SD_im <- apply(deter_im, 2, cumsum)
+SX_im <- apply(X_im, 2, cumsum)
+# Column layout of Xmat_im: [1: cumsum(const), 2: cumsum(x^1), 3: cumsum(x^2),
+# 4: x^1 (augmentation), 5: x^2 (augmentation)] -- delta/beta are rows 1-3
+# of theta_expected, the augmentation ("gamma") nuisance coefficients rows 4-5.
+Xmat_im <- cbind(SD_im, SX_im, X_im)  # "full augmentation"
+theta_expected <- solve(crossprod(Xmat_im), crossprod(Xmat_im, Sy_im))
+stopifnot(isTRUE(all.equal(unname(fit_imols$coefficients["const"]), unname(theta_expected[1, ]))))
+stopifnot(isTRUE(all.equal(unname(fit_imols$coefficients["x1^1"]), unname(theta_expected[2, ]))))
+stopifnot(isTRUE(all.equal(unname(fit_imols$coefficients["x1^2"]), unname(theta_expected[3, ]))))
+
+# Independent (loop-based, not apply()/rbind()) re-derivation of Vhat_NEW.m:
+vhat_check <- function(g) {
+  Tg <- nrow(g); k <- ncol(g)
+  S <- matrix(0, Tg, k)
+  for (j in seq_len(k)) S[, j] <- cumsum(g[, j])
+  DS <- matrix(0, Tg, k)
+  total <- S[Tg, ]
+  for (t in seq_len(Tg)) {
+    prev <- if (t == 1) rep(0, k) else S[t - 1, ]
+    DS[t, ] <- total - prev
+  }
+  gg <- solve(crossprod(g))
+  Vh <- gg %*% t(DS)
+  Vh %*% t(Vh)
+}
+varmat_expected <- Omega_udotv_expected * vhat_check(Xmat_im)
+se_expected <- sqrt(diag(varmat_expected)[1:3])  # const, x1^1, x1^2 -- rows 4-5 are the augmentation block
+stopifnot(isTRUE(all.equal(unname(fit_imols$coef_table["const", "Std. Error"]), unname(se_expected[1]))))
+stopifnot(isTRUE(all.equal(unname(fit_imols$coef_table["x1^1", "Std. Error"]), unname(se_expected[2]))))
+stopifnot(isTRUE(all.equal(unname(fit_imols$coef_table["x1^2", "Std. Error"]), unname(se_expected[3]))))
+cat("[OK] IMOLS matches an independent re-derivation of the partial-sum-and-augment estimator and its sandwich covariance, recovers DGP coefficients, and rejects `w`\n")
 
 ## ---- 7. Stationary regressor (w) and explicit trend deterministic ----
 w <- matrix(rnorm(Tn), ncol = 1)
@@ -305,6 +373,32 @@ cat("[OK] pcpr(type='mg') unit-level fits are identical to standalone cpr() call
 # Group-mean coefficient is exactly the column mean of the unit coefficients.
 stopifnot(isTRUE(all.equal(unname(fit_mg$coefficients), unname(colMeans(fit_mg$unit_coefficients)))))
 cat("[OK] group-mean coefficient equals the mean of the unit-specific estimates\n")
+
+# pcpr(type = "mg") is estimator-agnostic by construction (it just calls
+# cpr(..., estimator = ...) per unit and averages), so IMOLS works through
+# it with no panel-specific code at all -- checked the same way as the
+# FMOLS case above (unit-level fits identical to standalone cpr() calls).
+fit_mg_imols <- pcpr(panel$NOIP / 1000, panel$GNIPC / 1000, id = panel$COUNTRY, time = panel$YEAR,
+                      orders = 2, kernel = "ba", bandwidth = "And91", type = "mg", estimator = "IMOLS")
+stopifnot(inherits(fit_mg_imols, "pcpr"))
+for (cname in c("Czechia", "Slovenia")) {
+  sub <- panel[panel$COUNTRY == cname, ]
+  sub <- sub[order(sub$YEAR), ]
+  fit_solo_imols <- cpr(sub$NOIP / 1000, sub$GNIPC / 1000, orders = 2, estimator = "IMOLS",
+                         kernel = "ba", bandwidth = "And91")
+  stopifnot(identical(fit_solo_imols$coefficients, fit_mg_imols$unit_fits[[cname]]$coefficients))
+}
+stopifnot(isTRUE(all.equal(unname(fit_mg_imols$coefficients), unname(colMeans(fit_mg_imols$unit_coefficients)))))
+# pmg remains FM-OLS-only (its bias-correction algebra is FM-OLS-specific,
+# not something any per-unit estimator can be swapped into).
+err_pmg_imols <- tryCatch({
+  pcpr(panel$NOIP / 1000, panel$GNIPC / 1000, id = panel$COUNTRY, time = panel$YEAR,
+       orders = 2, type = "pmg", estimator = "IMOLS")
+  NULL
+}, error = function(e) e)
+stopifnot(!is.null(err_pmg_imols))
+stopifnot(grepl("only implements 'FMOLS'", conditionMessage(err_pmg_imols)))
+cat("[OK] pcpr(type='mg') works with estimator='IMOLS' for free; pcpr(type='pmg') still rejects it\n")
 
 # print/summary work.
 out3 <- capture.output(print(summary(fit_mg)))

@@ -11,7 +11,7 @@
 
 source_order <- c(
   "lr-weights.R", "lr-var.R", "bandwidth.R", "prewhiten.R", "poly-terms.R",
-  "fmols.R", "dols.R", "estimators.R", "formula-data.R", "cpr.R",
+  "fmols.R", "dols.R", "imols.R", "estimators.R", "formula-data.R", "cpr.R",
   "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R", "methods.R"
 )
 invisible(lapply(file.path("R", source_order), source))
