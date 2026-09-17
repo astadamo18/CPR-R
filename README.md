@@ -8,19 +8,18 @@ further estimators and a panel version can be added later.
 ## Status
 
 - `cpr()`: single-equation cointegrating polynomial regression.
-  - Estimator: `"FMOLS"` (fully modified OLS, `R/fmols.R`) and `"DOLS"`
+  - Estimator: `"FMOLS"` (fully modified OLS, `R/fmols.R`), `"DOLS"`
     (dynamic OLS, `R/dols.R`, port of `MonitoringCPR_MatlabCode/MonitoringCPR/
-    DOLS_CPR.m` and its `GenLeadLag.m` helper) are implemented. `"MOLS"`
-    remains a placeholder (see `R/estimators.R`) — no standalone
-    single-equation MATLAB source for it was found in the original
-    toolbox, only a panel-embedded bias correction inside `PanelEKC_*.m`,
-    already ported as `pcpr(type = "pmg")`'s `beta_Mod`. `"IMOLS"` also
-    remains a placeholder, but real source exists to port later
-    (`IM-SCMPR-ExemplaryCode/im_scmpr.m` / `MonitoringCPR_MatlabCode/
-    MonitoringCPR/IMOLS_NL.m`, Vogelsang & Wagner's Integrated Modified
-    OLS). Adding a new estimator is a matter of writing a
-    `fit_*_cpr(y, x, orders, w, deter, kernel, bandwidth, n_lag, n_lead)`
-    function and plugging it into `.cpr_estimators`.
+    DOLS_CPR.m` and its `GenLeadLag.m` helper), and `"IMOLS"` (integrated
+    modified OLS, `R/imols.R`, port of `MonitoringCPR_MatlabCode/
+    MonitoringCPR/IMOLS_NL.m`'s baseline "regression (1)" plus `Vhat_NEW.m`
+    for its sandwich covariance) are implemented. `"MOLS"` remains a
+    placeholder (see `R/estimators.R`) — no standalone single-equation
+    MATLAB source for it was found in the original toolbox, only a
+    panel-embedded bias correction inside `PanelEKC_*.m`, already ported as
+    `pcpr(type = "pmg")`'s `beta_Mod`. Adding a new estimator is a matter of
+    writing a `fit_*_cpr(y, x, orders, w, deter, kernel, bandwidth, n_lag,
+    n_lead)` function and plugging it into `.cpr_estimators`.
     DOLS augments the polynomial regression with leads and lags of
     `Delta(x)` (`n_lag`/`n_lead`, both default `0`) and gets consistency
     from that augmentation via plain OLS, with HAC standard errors
@@ -28,6 +27,19 @@ further estimators and a panel version can be added later.
     Schur-complement correction, not a variant of it. It does not support
     `w`, and (unlike FM-OLS) does not drop the first observation when
     `n_lag = n_lead = 0`.
+    IM-OLS partial-sums (`cumsum`) both sides of the equation and augments
+    with the un-summed regressor levels to absorb the endogeneity between
+    the regressors and the error, then runs plain OLS on that transformed
+    system (Vogelsang & Wagner, 2014) -- a third distinct mechanism, needing
+    no sample truncation. Its sandwich covariance is scaled by the
+    conditional long-run variance of the OLS residuals given `Delta(x)`
+    (the same `Omega_udotv` construction FM-OLS uses), following
+    `IM-SCMPR-ExemplaryCode/im_scmpr.m`'s more general and explicit version
+    of the same formula. Only `IMOLS_NL.m`'s baseline estimator and its
+    "full augmentation" variant are ported (not its optional Z-augmented
+    refinement or "linear augmentation" alternative -- see the file-level
+    comment in `R/imols.R`), and it does not support `w` at all: the
+    original `IMOLS_NL.m` never took one.
   - Bandwidth selection: `"And91"` (Andrews, 1991), `"AM92"` (Andrews &
     Monahan, 1992, VAR(1) pre-whitened), `"NW"` (Newey & West, 1994), or a
     fixed numeric bandwidth. For `"And91"`/`"NW"`, the bandwidth is resolved
@@ -89,7 +101,10 @@ further estimators and a panel version can be added later.
     `cpr()` call, not a parallel reimplementation -- and averages the
     unit-specific coefficients (Pesaran & Smith, 1995, mean-group
     estimator and between-unit inference). `object$unit_fits` holds the
-    individual `"cpr"` objects.
+    individual `"cpr"` objects. Estimator-agnostic by construction --
+    `estimator = "FMOLS"`/`"DOLS"`/`"IMOLS"` all work through `"mg"` with no
+    panel-specific code of their own, since it's just `cpr()` called per
+    unit and averaged.
   - `type = "pmg"` (pooled panel, de Jong & Wagner 2016; port of
     `deJongWagner2022/PanelEKC_indiv_eff_only.m` and `PanelEKC_two_eff.m`):
     a genuinely different estimator from `"mg"` -- a single common slope
@@ -104,7 +119,11 @@ further estimators and a panel version can be added later.
     with `orders` exactly `2` or `3` (the theoretical bias-correction
     matrices are only tabulated for those cases in the original source),
     and does not support `w`. Unlike `cpr()`/`"mg"`, it does not drop the
-    first time observation.
+    first time observation. Restricted to `estimator = "FMOLS"` -- its
+    bias-correction algebra is FM-OLS-specific, not something a different
+    per-unit estimator can be swapped into; `pcpr(type = "pmg", estimator =
+    "IMOLS")` (or `"DOLS"`) errors rather than silently ignoring the
+    request.
   - Requires a **balanced panel** (every unit observed at the same set of
     time points): this guarantees the long-run variance for every unit's
     model is estimated over the same number of time points, so units stay
@@ -225,7 +244,7 @@ clone (also how the test suite and example scripts run):
 ```r
 source_order <- c(
   "lr-weights.R", "lr-var.R", "bandwidth.R", "prewhiten.R", "poly-terms.R",
-  "fmols.R", "dols.R", "estimators.R", "formula-data.R", "cpr.R",
+  "fmols.R", "dols.R", "imols.R", "estimators.R", "formula-data.R", "cpr.R",
   "pooled-panel.R", "pcpr.R", "ct-test.R", "pu-test.R",
   "turning-points.R", "plot.R", "methods.R"
 )
@@ -243,6 +262,9 @@ summary(fit)
 
 fit_dols <- cpr(y, x, orders = 2, estimator = "DOLS", n_lag = 1, n_lead = 1)
 summary(fit_dols)
+
+fit_imols <- cpr(y, x, orders = 2, estimator = "IMOLS")
+summary(fit_imols)
 
 fit_mg <- pcpr(y, x, id = country, time = year, orders = 2)   # mean-group panel version
 summary(fit_mg)
@@ -318,6 +340,11 @@ full (untruncated) sample; with leads/lags added the point estimates move
 but stay in the same neighborhood as FM-OLS (const ~13-16, GNIPC ~-1.2 to
 -1.4, GNIPC^2 ~0.013-0.017, all significant either way).
 
+`examples/example_pcpr_mg.R` (mean-group panel) also fits the same CEE
+data with `estimator = "IMOLS"`, showing it works through `pcpr(type =
+"mg")` with no extra code: it's just `cpr(..., estimator = "IMOLS")`
+called per unit and averaged, same as `"FMOLS"`/`"DOLS"`.
+
 ## Tests
 
 ```
@@ -329,11 +356,17 @@ recovery on simulated data, all valid kernel/bandwidth combinations,
 informative errors for invalid combinations and unimplemented estimators,
 that DOLS with `n_lag = n_lead = 0` matches plain OLS on the full
 (untruncated) sample and that its truncation with leads/lags is exactly
-right, that DOLS rejects `w`, closed-form checks on `gen_lead_lag()` and
+right, that DOLS rejects `w`, that IMOLS's point estimator and sandwich
+covariance match an independently re-derived (loop-based, not
+`apply`/`rbind`) implementation of the same partial-sum-and-augment
+procedure and recover known DGP coefficients, that IMOLS rejects `w`,
+closed-form checks on `gen_lead_lag()` and
 the other low-level building blocks, a regression test pinning the CEE
 panel output to the original MATLAB results, checks that
 `pcpr(type = "mg")`'s per-unit fits are bit-for-bit identical to
-standalone `cpr()` calls and that it rejects unbalanced panels,
+standalone `cpr()` calls (including with `estimator = "IMOLS"`) and that
+it rejects unbalanced panels, that `pcpr(type = "pmg")` rejects
+`estimator = "IMOLS"` with a clear error,
 that `pcpr(type = "pmg")` runs for oneway/twoway effects and q = 2/3 and
 rejects its unsupported cases (q outside `{2, 3}`, `w`) with clear errors,
 a qualitative consistency check between `pmg` (N=1) and standalone `cpr()`,

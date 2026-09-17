@@ -6,14 +6,16 @@ Authors@R: person("CPR-R", role = c("aut", "cre"), email = "astadamo18@gmail.com
 Description: Estimation and inference for cointegrating polynomial regressions
     (CPR), following Wagner and co-authors (e.g. Wagner; Wagner & Reichold;
     de Jong & Wagner; Veldhuis & Wagner). Provides fully modified OLS
-    (FM-OLS) and dynamic OLS (DOLS) estimators for a single cointegrating
+    (FM-OLS), dynamic OLS (DOLS), and integrated modified OLS (IM-OLS,
+    Vogelsang & Wagner 2014) estimators for a single cointegrating
     polynomial regression via cpr(), a panel version via pcpr() (mean-group,
-    Pesaran & Smith 1995, and pooled, de Jong & Wagner 2016), a choice of
-    kernels and bandwidth selectors for long-run variance estimation, an
-    lm()-like formula/data interface for both, CT (KPSS/Shin-type) and PU
-    (Phillips-Ouliaris-type) cointegration tests, and turning_points()/
-    plot() for EKC-style turning-point analysis of a single or panel fit.
-    MOLS and IMOLS remain placeholders for future estimators.
+    Pesaran & Smith 1995, for any of the three estimators; pooled, de Jong &
+    Wagner 2016, FM-OLS only), a choice of kernels and bandwidth selectors
+    for long-run variance estimation, an lm()-like formula/data interface
+    for both, CT (KPSS/Shin-type) and PU (Phillips-Ouliaris-type)
+    cointegration tests, and turning_points()/plot() for EKC-style
+    turning-point analysis of a single or panel fit. MOLS remains a
+    placeholder for a future estimator.
 License: MIT
 Encoding: UTF-8
 RoxygenNote: 7.3.1
@@ -28,6 +30,7 @@ Collate:
     'poly-terms.R'
     'fmols.R'
     'dols.R'
+    'imols.R'
     'estimators.R'
     'formula-data.R'
     'cpr.R'
