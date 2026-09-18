@@ -27,6 +27,53 @@
 # v_{i,1} = x_{i,1} (as if x_{i,0} = 0) and uses the full T observations.
 # That is a genuine methodological difference from the mg estimator, not
 # an inconsistency to paper over.
+#
+# Additional integrated regressors (ncol(x) > 1 in pcpr()): the theoretical
+# M/Q/GT bias-correction machinery above is only derived for a *single*
+# polynomial regressor, so it cannot be generalized to more integrated
+# regressors the way cpr()/pcpr(type="mg") generalize (independent powers
+# per column, gen_var_poly_terms()). Instead this follows the same ad hoc
+# (not derived in any Wagner-authored source) extension used by a
+# third-party Stata port of this estimator, xtpcmg.ado (Roudane), whose
+# `controls` mechanism:
+#  - adds each extra regressor *linearly only* (no powers of its own),
+#    within/demeaned by the same oneway/twoway fixed-effects transform
+#    used for y -- see `demean_effects()`;
+#  - applies *zero* FM/Modified-OLS bias correction to it (the theory
+#    behind that correction is specific to powers of the single polynomial
+#    regressor), so its coefficient is, in effect, a plain LSDV/within-OLS
+#    estimate riding along in the same regression;
+#  - gets its own standard error from a plain heteroskedasticity-robust
+#    (HC0) sandwich on the FM/Mod residuals, block-diagonal against the
+#    polynomial block's theoretical GT-based VCV (no derived formula for
+#    the cross-covariance between the two exists, so it is not estimated,
+#    i.e. treated as zero -- a real simplification, not a proven result).
+# This is a practical convenience for including control variables that
+# happen to be integrated, not a validated theoretical result -- treat its
+# standard errors on the extra regressor(s) with that caveat in mind.
+
+#' Within (fixed-effects) demeaning of a single `T x N` matrix
+#'
+#' The same oneway (individual-only)/twoway (individual + time) demeaning
+#' `simpledemean()` applies to `y`; factored out so it can be reused
+#' unchanged on an additional integrated regressor's own `T x N` matrix
+#' (see the file-level comment on additional integrated regressors above).
+#'
+#' @param m A `T x N` matrix.
+#' @param way `"oneway"` or `"twoway"`.
+#' @keywords internal
+demean_effects <- function(m, way) {
+  m <- as.matrix(m)
+  Tn <- nrow(m)
+  N <- ncol(m)
+  if (way == "oneway") {
+    sweep(m, 2, colMeans(m), "-")
+  } else {
+    col_mean <- matrix(colMeans(m), Tn, N, byrow = TRUE)
+    row_mean <- matrix(rowMeans(m), Tn, N)
+    m - col_mean - row_mean + sum(m) / (Tn * N)
+  }
+}
 
 #' Within-transformation (demeaning) for the pooled panel CPR estimator
 #'
@@ -117,12 +164,18 @@ simpledemean <- function(y, x, way = c("oneway", "twoway"), q) {
 #'   [pcpr()]'s `"mg"` type.
 #' @param effects `"oneway"` (individual fixed effects only) or `"twoway"`
 #'   (individual + time fixed effects).
-#' @return A list with `beta_lsdv`, `beta_Mod`, `beta_FM` (length-`q`
-#'   coefficient vectors), `VCV_Mod`, `VCV_FM`, `VCV_FM_std` (`q x q`
-#'   variance-covariance matrices), and `unit_info` (per-unit diagnostics:
-#'   `Omega_i` etc.).
+#' @param z Optional list of additional integrated regressors, each a
+#'   `T x N` matrix like `x`. Each enters linearly only (no powers of its
+#'   own), with zero bias correction and its own block-diagonal HC0 sandwich
+#'   standard error -- see the file-level comment on additional integrated
+#'   regressors above. `NULL` (default) reproduces the single-regressor
+#'   estimator exactly.
+#' @return A list with `beta_lsdv`, `beta_Mod`, `beta_FM` (length-`q +
+#'   length(z)` coefficient vectors, polynomial terms first), `VCV_Mod`,
+#'   `VCV_FM`, `VCV_FM_std` (matching square variance-covariance matrices),
+#'   and `unit_info` (per-unit diagnostics: `Omega_i` etc.).
 #' @keywords internal
-fit_pooled_panel_cpr <- function(y, x, q, kernel, bandwidth, effects = "oneway") {
+fit_pooled_panel_cpr <- function(y, x, q, kernel, bandwidth, effects = "oneway", z = NULL) {
   theory <- .pooled_theory_matrices(q)
   M <- theory$M
   Q <- theory$Q
@@ -131,6 +184,8 @@ fit_pooled_panel_cpr <- function(y, x, q, kernel, bandwidth, effects = "oneway")
   x <- as.matrix(x)
   Tn <- nrow(x)
   N <- ncol(x)
+  nc <- length(z)
+  p <- q + nc
 
   dm <- simpledemean(y, x, effects, q)
   yv <- as.numeric(dm$ytilde)
@@ -138,6 +193,10 @@ fit_pooled_panel_cpr <- function(y, x, q, kernel, bandwidth, effects = "oneway")
     cbind(as.numeric(dm$xtilde), as.numeric(dm$xquad_tilde))
   } else {
     cbind(as.numeric(dm$xtilde), as.numeric(dm$xquad_tilde), as.numeric(dm$xcub_tilde))
+  }
+  if (nc > 0) {
+    Ztilde <- do.call(cbind, lapply(z, function(zk) as.numeric(demean_effects(zk, effects))))
+    Xtilde <- cbind(Xtilde, Ztilde)
   }
 
   XXtilde <- crossprod(Xtilde)
@@ -210,18 +269,20 @@ fit_pooled_panel_cpr <- function(y, x, q, kernel, bandwidth, effects = "oneway")
   Lr_mean <- Sum_Lr / N
   Dr_mean <- Sum_Dr / N
 
-  # Modified OLS bias correction:
+  # Modified OLS bias correction (zero-padded for any additional integrated
+  # regressors -- the bias-correction theory only covers the polynomial
+  # terms, see the file-level comment):
   base_vec <- numeric(q)
   base_vec[1] <- -0.5 * Tn * Lr_mean[1, 2]
   if (q == 3) base_vec[3] <- -(Tn^2) * Lr_mean[2, 2] * Lr_mean[1, 2]
-  Sum_Ci_tilde_star <- Dr_mean[2, 1] * Sum_Mi + N * base_vec
+  Sum_Ci_tilde_star <- c(Dr_mean[2, 1] * Sum_Mi + N * base_vec, rep(0, nc))
   beta_Mod <- as.numeric(beta_lsdv - invXXtilde %*% Sum_Ci_tilde_star)
 
-  # Fully Modified correction:
+  # Fully Modified correction (same zero-padding for additional regressors):
   Dr_vu_plus <- Dr_mean[2, 1] - Dr_mean[2, 2] / Lr_mean[2, 2] * Lr_mean[2, 1]
-  Sum_FM_cor <- numeric(q)
+  Sum_FM_cor <- numeric(p)
   for (i in seq_len(N)) {
-    C_plus_i <- Dr_vu_plus * Eqn[[i]]$M
+    C_plus_i <- c(Dr_vu_plus * Eqn[[i]]$M, rep(0, nc))
     y_tildeplus_i <- dm$ytilde[, i] - Lr_mean[1, 2] / Lr_mean[2, 2] * Eqn[[i]]$vt
     FM_cor_i <- as.numeric(crossprod(Eqn[[i]]$X_tilde, y_tildeplus_i)) - C_plus_i
     Sum_FM_cor <- Sum_FM_cor + FM_cor_i
@@ -237,8 +298,8 @@ fit_pooled_panel_cpr <- function(y, x, q, kernel, bandwidth, effects = "oneway")
 
   if (effects == "oneway") {
     invV_hat <- solve(V1_hat)
-    VCV_Mod <- (1 / N) * GT %*% (invV_hat %*% Sigma1 %*% invV_hat) %*% GT
-    VCV_FM <- (1 / N) * GT %*% (invV_hat %*% Sigma11 %*% invV_hat) %*% GT
+    VCV_Mod_poly <- (1 / N) * GT %*% (invV_hat %*% Sigma1 %*% invV_hat) %*% GT
+    VCV_FM_poly <- (1 / N) * GT %*% (invV_hat %*% Sigma11 %*% invV_hat) %*% GT
   } else {
     OuuOvv_mean <- Sum_OuuOvv / N
     OudotvOvv_mean <- Sum_OudotvOvv / N
@@ -250,19 +311,45 @@ fit_pooled_panel_cpr <- function(y, x, q, kernel, bandwidth, effects = "oneway")
     adjA <- matrix(0, q, q); adjA[2, 2] <- OuuOvv_mean * Lr_mean[2, 2] / 6
     adjB <- matrix(0, q, q); adjB[2, 2] <- Lr_mean[1, 1] * Lr_mean[2, 2]^2 / 12
     Sigma2 <- Sigma1 - adjA + adjB
-    VCV_Mod <- (1 / N) * GT %*% (invV_hat %*% Sigma2 %*% invV_hat) %*% GT
+    VCV_Mod_poly <- (1 / N) * GT %*% (invV_hat %*% Sigma2 %*% invV_hat) %*% GT
 
     adjC <- matrix(0, q, q); adjC[2, 2] <- Lr_mean[2, 2] * OudotvOvv_mean / 6
     adjD <- matrix(0, q, q); adjD[2, 2] <- Omega_udotv_mean * Lr_mean[2, 2]^2 / 12
     Sigma2plus <- Sigma11 - adjC + adjD
-    VCV_FM <- (1 / N) * GT %*% (invV_hat %*% Sigma2plus %*% invV_hat) %*% GT
+    VCV_FM_poly <- (1 / N) * GT %*% (invV_hat %*% Sigma2plus %*% invV_hat) %*% GT
+  }
+
+  if (nc > 0) {
+    # Additional-regressor block: plain HC0 (heteroskedasticity-robust)
+    # sandwich on the FM/Mod residuals, block-diagonal against the
+    # polynomial block above (no derived formula for their cross-covariance
+    # exists -- see the file-level comment).
+    Xc <- Xtilde[, (q + 1):p, drop = FALSE]
+    bread_c <- solve(crossprod(Xc))
+
+    u_fm <- yv - Xtilde %*% beta_FM
+    VCV_ctrl_FM <- bread_c %*% crossprod(Xc, Xc * as.numeric(u_fm)^2) %*% bread_c
+
+    u_mod <- yv - Xtilde %*% beta_Mod
+    VCV_ctrl_Mod <- bread_c %*% crossprod(Xc, Xc * as.numeric(u_mod)^2) %*% bread_c
+
+    VCV_FM <- matrix(0, p, p)
+    VCV_FM[seq_len(q), seq_len(q)] <- VCV_FM_poly
+    VCV_FM[(q + 1):p, (q + 1):p] <- VCV_ctrl_FM
+
+    VCV_Mod <- matrix(0, p, p)
+    VCV_Mod[seq_len(q), seq_len(q)] <- VCV_Mod_poly
+    VCV_Mod[(q + 1):p, (q + 1):p] <- VCV_ctrl_Mod
+  } else {
+    VCV_FM <- VCV_FM_poly
+    VCV_Mod <- VCV_Mod_poly
   }
 
   VCV_FM_std <- Omega_udotv_mean * invXXtilde
 
   list(beta_lsdv = beta_lsdv, beta_Mod = beta_Mod, beta_FM = beta_FM,
        VCV_Mod = VCV_Mod, VCV_FM = VCV_FM, VCV_FM_std = VCV_FM_std,
-       unit_info = Eqn, n_units = N, n_time = Tn, q = q, effects = effects)
+       unit_info = Eqn, n_units = N, n_time = Tn, q = q, nc = nc, effects = effects)
 }
 
 #' @keywords internal
@@ -279,24 +366,39 @@ fit_pmg_pcpr <- function(y_list, x_list, orders, w_list, deter_list,
          "(`w`) yet.", call. = FALSE)
   }
   m <- ncol(x_list[[1]])
-  if (m != 1) {
-    stop("The pooled panel ('pmg') estimator only supports a single integrated ",
-         "regressor (ncol(x) == 1).", call. = FALSE)
-  }
   if (!(is.numeric(orders) && length(orders) == 1 && orders %in% c(2, 3))) {
     stop("The pooled panel ('pmg') estimator requires `orders` to be a single ",
-         "integer, 2 or 3 (the theoretical bias-correction matrices are only ",
-         "tabulated for those cases).", call. = FALSE)
+         "integer, 2 or 3, applying to the *first* integrated regressor (the ",
+         "theoretical bias-correction matrices are only tabulated for those ",
+         "cases, for a single polynomial regressor). Any additional integrated ",
+         "regressors (ncol(x) > 1) always enter linearly (order 1) -- see the ",
+         "file-level comment in R/pooled-panel.R.", call. = FALSE)
   }
 
   Y <- do.call(cbind, y_list)
   X <- do.call(cbind, lapply(x_list, function(xx) xx[, 1]))
   colnames(Y) <- colnames(X) <- unit_names
 
-  fit <- fit_pooled_panel_cpr(Y, X, q = orders, kernel = kernel, bandwidth = bandwidth,
-                               effects = effects)
+  z <- NULL
+  ctrl_names <- character(0)
+  if (m > 1) {
+    ctrl_names <- colnames(x_list[[1]])[-1]
+    z <- lapply(2:m, function(k) {
+      Zk <- do.call(cbind, lapply(x_list, function(xx) xx[, k]))
+      colnames(Zk) <- unit_names
+      Zk
+    })
+  }
 
-  coef_names <- paste0("x1^", seq_len(orders))
+  fit <- fit_pooled_panel_cpr(Y, X, q = orders, kernel = kernel, bandwidth = bandwidth,
+                               effects = effects, z = z)
+
+  # NB: paste0(character(0), "^1") is NOT character(0) -- R treats a
+  # zero-length argument mixed with a non-zero-length one as if absent,
+  # returning "^1" (a real gotcha) -- so the control-name suffix must only
+  # be built when there actually are any.
+  ctrl_coef_names <- if (length(ctrl_names) > 0) paste0(ctrl_names, "^1") else character(0)
+  coef_names <- c(paste0("x1^", seq_len(orders)), ctrl_coef_names)
   coefficients <- fit$beta_FM
   names(coefficients) <- coef_names
   se <- sqrt(diag(fit$VCV_FM))

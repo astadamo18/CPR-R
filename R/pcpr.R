@@ -94,9 +94,14 @@ fit_mg_pcpr <- function(y_list, x_list, orders, w_list, deter_list,
 #'   inference; allows full slope heterogeneity across units. `"pmg"`
 #'   (pooled panel, de Jong & Wagner 2016): a single common slope shared by
 #'   all units, with per-unit long-run variances pooled into one bias
-#'   correction (see `R/pooled-panel.R`). `"pmg"` requires a single
-#'   integrated regressor (`ncol(x) == 1`), `orders` a single integer `2`
-#'   or `3` (not a list or vector), and does not support `w`.
+#'   correction (see `R/pooled-panel.R`). `orders` must be a single integer
+#'   `2` or `3` (not a list or vector) -- it applies to the *first* column
+#'   of `x`, the polynomial regressor whose bias-correction theory is
+#'   actually tabulated. Any additional columns of `x` (extra integrated
+#'   regressors) are supported too, but enter *linearly only* (no powers of
+#'   their own), with no bias correction and their own block-diagonal HC0
+#'   standard error -- an ad hoc convenience, not a derived result; see the
+#'   file-level comment in `R/pooled-panel.R`. `"pmg"` does not support `w`.
 #' @param effects Only used when `type = "pmg"`: `"oneway"` (individual
 #'   fixed effects only; default) or `"twoway"` (individual + time fixed
 #'   effects). Ignored for `type = "mg"`.
