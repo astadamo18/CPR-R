@@ -856,4 +856,17 @@ unlink(plot_dev_extrap)
 stopifnot(tp_pmg$x >= usr_extrap[1] && tp_pmg$x <= usr_extrap[2])
 cat("[OK] plot() extends the axis to actually show a turning point outside the observed data, not just report it\n")
 
+# `extrapolated = FALSE` opts back out of that: the axis should NOT be
+# stretched to include an exterior turning point, and turning_points()'s
+# own (unaffected) data must still report it either way.
+plot_dev_noextrap <- tempfile(fileext = ".pdf")
+grDevices::pdf(plot_dev_noextrap)
+tp_pmg_noextrap <- plot(fit_pmg2, extrapolated = FALSE)
+usr_noextrap <- graphics::par("usr")
+grDevices::dev.off()
+unlink(plot_dev_noextrap)
+stopifnot(!(tp_pmg$x >= usr_noextrap[1] && tp_pmg$x <= usr_noextrap[2]))
+stopifnot(isTRUE(all.equal(tp_pmg_noextrap, tp_pmg)))  # returned data unaffected by the drawing choice
+cat("[OK] plot(..., extrapolated = FALSE) leaves an exterior turning point off the plot without changing the returned data\n")
+
 cat("\nAll tests passed.\n")
