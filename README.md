@@ -115,11 +115,23 @@ further estimators and a panel version can be added later.
     three point estimates (`beta_lsdv`, `beta_Mod`, `beta_FM`; the
     coefficient table reports `beta_FM`) and three VCV matrices, in
     `object$unit_fits`. See the file-level comment in `R/pooled-panel.R`
-    for the full derivation. Restricted to a single integrated regressor
-    with `orders` exactly `2` or `3` (the theoretical bias-correction
-    matrices are only tabulated for those cases in the original source),
-    and does not support `w`. Unlike `cpr()`/`"mg"`, it does not drop the
-    first time observation. Restricted to `estimator = "FMOLS"` -- its
+    for the full derivation. `orders` must be exactly `2` or `3` (the
+    theoretical bias-correction matrices are only tabulated for those
+    cases in the original source), applying to the *first* integrated
+    regressor. Additional integrated regressors (`ncol(x) > 1`) are
+    supported too, but as an ad hoc extension, not a theoretically derived
+    one: following the same convention as a third-party Stata port of this
+    estimator (`xtpcmg.ado`, Roudane) rather than any Wagner-authored
+    source, each extra regressor enters *linearly only* (no powers of its
+    own), gets *zero* FM/Modified-OLS bias correction (that theory is
+    specific to powers of the single polynomial regressor), and gets its
+    own standard error from a plain heteroskedasticity-robust (HC0)
+    sandwich, block-diagonal against the polynomial block's theoretical
+    VCV (no derived cross-covariance formula exists, so none is
+    estimated) -- see the file-level comment in `R/pooled-panel.R`. Does
+    not support `w` (stationary regressors are a separate thing from
+    additional *integrated* ones). Unlike `cpr()`/`"mg"`, it does not drop
+    the first time observation. Restricted to `estimator = "FMOLS"` -- its
     bias-correction algebra is FM-OLS-specific, not something a different
     per-unit estimator can be swapped into; `pcpr(type = "pmg", estimator =
     "IMOLS")` (or `"DOLS"`) errors rather than silently ignoring the
@@ -332,7 +344,11 @@ on the same CEE panel, both `oneway` and `twoway`, and compares its
 (single, common) slope against `pcpr(type = "mg")`'s group-mean slope --
 directionally consistent (negative linear term, small positive quadratic
 term) in this data, as expected since the two estimators target the same
-underlying relationship under different homogeneity assumptions.
+underlying relationship under different homogeneity assumptions. It also
+adds a second (fabricated, since the bundled panel only has one) integrated
+regressor to show the ad hoc extension from `R/pooled-panel.R`: it enters
+linearly, with its own block-diagonal HC0 standard error, alongside the
+theory-backed polynomial coefficients.
 
 `examples/example_dols.R` compares `cpr(estimator = "DOLS")` against
 `"FMOLS"` on Czechia: with `n_lag = n_lead = 0` DOLS is plain OLS on the
@@ -369,7 +385,12 @@ it rejects unbalanced panels, that `pcpr(type = "pmg")` rejects
 `estimator = "IMOLS"` with a clear error,
 that `pcpr(type = "pmg")` runs for oneway/twoway effects and q = 2/3 and
 rejects its unsupported cases (q outside `{2, 3}`, `w`) with clear errors,
-a qualitative consistency check between `pmg` (N=1) and standalone `cpr()`,
+that `pcpr(type = "pmg")` with an additional integrated regressor produces
+finite coefficients/standard errors under the expected name (`x1^1`,
+`x1^2`, `<name>^1`), a block-diagonal VCV (zero cross-covariance between
+the polynomial and additional-regressor blocks), and still rejects a
+non-scalar `orders`, a qualitative consistency check between `pmg` (N=1)
+and standalone `cpr()`,
 that all 48 bundled CT and PU critical-value tables load and are monotone,
 that `ct_test()`/`pu_test()` dispatch correctly on a fitted `cpr` object
 with their `print()` methods showing the expected sections, that

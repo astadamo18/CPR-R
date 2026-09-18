@@ -433,8 +433,63 @@ for (eff in c("oneway", "twoway")) {
 }
 cat("[OK] pcpr(type='pmg') runs for oneway/twoway effects and q=2/3\n")
 
-# pmg restrictions are rejected with informative errors: q outside {2,3},
-# a stationary regressor `w`, and more than one integrated regressor.
+# pmg with an additional *integrated* regressor (ncol(x) > 1): ad hoc
+# extension following the same convention as the third-party xtpcmg.ado
+# Stata port (R/pooled-panel.R's file-level comment) -- the extra
+# regressor enters linearly only (order 1), gets zero bias correction, and
+# a separate block-diagonal HC0 standard error.
+set.seed(20260918)
+panel_z <- panel
+panel_z$FAKEZ <- unlist(lapply(split(seq_len(nrow(panel_z)), panel_z$COUNTRY), function(idx) {
+  cumsum(rnorm(length(idx)))
+})) / 1000
+
+fit_pmg_single <- pcpr(panel$NOIP / 1000, panel$GNIPC / 1000, id = panel$COUNTRY, time = panel$YEAR,
+                        orders = 2, kernel = "ba", bandwidth = "And91", type = "pmg")
+fit_pmg_multi <- pcpr(panel_z$NOIP / 1000, cbind(GNIPC = panel_z$GNIPC / 1000, FAKEZ = panel_z$FAKEZ),
+                       id = panel_z$COUNTRY, time = panel_z$YEAR,
+                       orders = 2, kernel = "ba", bandwidth = "And91", type = "pmg")
+stopifnot(identical(names(fit_pmg_multi$coefficients), c("x1^1", "x1^2", "FAKEZ^1")))
+stopifnot(all(is.finite(fit_pmg_multi$coefficients)))
+stopifnot(all(is.finite(fit_pmg_multi$coef_table)))
+# Adding an (uncorrelated-with-y-by-construction, but still routed through
+# the same demeaned regression) extra regressor perturbs the polynomial
+# coefficients somewhat, through the shared XX' inverse, but not wildly --
+# same sign, same order of magnitude as the single-regressor fit.
+stopifnot(sign(fit_pmg_multi$coefficients["x1^1"]) == sign(fit_pmg_single$coefficients["x1^1"]))
+stopifnot(sign(fit_pmg_multi$coefficients["x1^2"]) == sign(fit_pmg_single$coefficients["x1^2"]))
+# VCV is block-diagonal: no cross-covariance estimated between the
+# polynomial block and the additional-regressor block (see file-level
+# comment in R/pooled-panel.R -- no derived formula for it exists).
+V_multi <- fit_pmg_multi$unit_fits$VCV_FM
+stopifnot(identical(dim(V_multi), c(3L, 3L)))
+stopifnot(all(V_multi[1:2, 3] == 0))
+stopifnot(all(V_multi[3, 1:2] == 0))
+# `orders` still only accepts a single integer 2/3 -- it applies to the
+# first (polynomial) regressor; a vector/list is rejected with a clear
+# error pointing at that restriction.
+err_pmg_orders_vec <- tryCatch({
+  pcpr(panel_z$NOIP / 1000, cbind(GNIPC = panel_z$GNIPC / 1000, FAKEZ = panel_z$FAKEZ),
+       id = panel_z$COUNTRY, time = panel_z$YEAR, orders = c(2, 1), type = "pmg")
+  NULL
+}, error = function(e) e)
+stopifnot(!is.null(err_pmg_orders_vec))
+stopifnot(grepl("single integer, 2 or 3", conditionMessage(err_pmg_orders_vec)))
+# effects = "twoway" and q = 3 also work with the extra regressor.
+fit_pmg_multi_tw <- pcpr(panel_z$NOIP / 1000, cbind(GNIPC = panel_z$GNIPC / 1000, FAKEZ = panel_z$FAKEZ),
+                          id = panel_z$COUNTRY, time = panel_z$YEAR,
+                          orders = 3, kernel = "ba", bandwidth = "And91", type = "pmg", effects = "twoway")
+stopifnot(identical(names(fit_pmg_multi_tw$coefficients), c("x1^1", "x1^2", "x1^3", "FAKEZ^1")))
+stopifnot(all(is.finite(fit_pmg_multi_tw$coefficients)))
+# turning_points()/plot() still work unchanged (they only ever read off
+# the "x1^" powers, ignoring any additional-regressor coefficients).
+tp_pmg_multi <- turning_points(fit_pmg_multi)
+stopifnot(identical(names(tp_pmg_multi), c("x", "y", "type", "interior")))
+cat("[OK] pcpr(type='pmg') supports an additional integrated regressor (linear, zero-corrected, block-diagonal VCV)\n")
+
+# pmg restrictions are rejected with informative errors: q outside {2,3}
+# and a stationary regressor `w`. (Additional *integrated* regressors are
+# supported -- see the dedicated section below -- just not `w`.)
 err_pmg_q <- tryCatch({
   pcpr(panel$NOIP / 1000, panel$GNIPC / 1000, id = panel$COUNTRY, time = panel$YEAR,
        orders = 4, type = "pmg")
