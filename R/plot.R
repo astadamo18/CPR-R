@@ -7,11 +7,13 @@
 #
 # A turning point can fall outside the observed range of x (e.g. pooling a
 # common slope across panel units easily pushes the implied vertex beyond
-# what any single unit's data covers) -- turning_points() reports it either
-# way, flagged via `interior` rather than dropped (see R/turning-points.R),
-# and plot() extends the drawn curve just far enough to actually show it,
-# dashing the extrapolated segment so it reads as projection rather than
-# observed relationship.
+# what any single unit's data covers) -- turning_points() always reports it
+# either way, flagged via `interior` rather than dropped (see
+# R/turning-points.R). plot()'s `extrapolated` argument (default `TRUE`)
+# controls only whether it's *drawn*: when `TRUE`, the curve is extended
+# (dashed) just far enough to show it; when `FALSE`, the curve stops at the
+# observed data and an exterior turning point is left off the plot
+# entirely (though still present in the data frame plot() returns).
 
 #' Extend a data range just enough to include some extra points
 #'
@@ -25,6 +27,17 @@ extend_range_for_points <- function(base_range, extra_points) {
   if (isTRUE(all.equal(full, base_range))) return(base_range)
   pad <- 0.05 * diff(full)
   full + c(-pad, pad)
+}
+
+#' Drop exterior turning points from what gets drawn, per `extrapolated`
+#'
+#' Never touches the data itself (`turning_points()`/`plot()`'s *returned*
+#' value always has every turning point, `interior` flagged) -- only what
+#' `draw_turning_points()` is handed to actually put on the plot.
+#' @keywords internal
+filter_drawable_tp <- function(tp, extrapolated) {
+  if (extrapolated) return(tp)
+  tp[is.na(tp$interior) | tp$interior, , drop = FALSE]
 }
 
 #' Draw a curve, dashing whatever part of it falls outside the observed
@@ -63,12 +76,19 @@ draw_curve <- function(grid, curve_y, xr_data) {
 #'   leaves `main` as-is. Uses a plain hyphen rather than an em dash: some
 #'   graphics devices (e.g. the default bitmap `png()`) fall back to "..."
 #'   for characters their font doesn't cover.
+#' @param extrapolated If `TRUE` (default), a turning point outside the
+#'   observed `x` range is still drawn -- the curve is extended (dashed)
+#'   just far enough to show it. If `FALSE`, the curve stops at the
+#'   observed data and such a turning point is left off the plot entirely
+#'   (it is still in the returned data frame either way -- this only
+#'   controls what gets drawn).
 #' @param ... Passed on to the underlying [plot()] call.
 #' @return Invisibly, the turning-point data frame (see [turning_points()]).
 #' @export
 plot.cpr <- function(x, y = NULL, n = 200, x_range = NULL, show_data = TRUE,
                       digits = 3, xlab = NULL, ylab = "prediction",
-                      main = "Turning point analysis", id = NULL, ...) {
+                      main = "Turning point analysis", id = NULL,
+                      extrapolated = TRUE, ...) {
   object <- x
   if (ncol(object$x) != 1) {
     stop("plot.cpr() only supports a fit with a single integrated regressor.", call. = FALSE)
@@ -80,7 +100,7 @@ plot.cpr <- function(x, y = NULL, n = 200, x_range = NULL, show_data = TRUE,
 
   xr_data <- if (is.null(x_range)) range(object$x[, 1]) else x_range
   tp <- poly_turning_points(beta, powers1, const = const, x_range = xr_data)
-  xr_full <- extend_range_for_points(xr_data, tp$x)
+  xr_full <- if (extrapolated) extend_range_for_points(xr_data, tp$x) else xr_data
 
   grid <- sort(unique(c(seq(xr_full[1], xr_full[2], length.out = n), xr_data)))
   curve_y <- const + as.numeric(gen_power_reg(grid, powers1) %*% beta)
@@ -105,7 +125,7 @@ plot.cpr <- function(x, y = NULL, n = 200, x_range = NULL, show_data = TRUE,
     graphics::points(object$x[, 1], object$y, pch = 16,
                       col = grDevices::adjustcolor("black", 0.35))
   }
-  draw_turning_points(tp, digits = digits)
+  draw_turning_points(filter_drawable_tp(tp, extrapolated), digits = digits)
   invisible(tp)
 }
 
@@ -125,21 +145,30 @@ plot.cpr <- function(x, y = NULL, n = 200, x_range = NULL, show_data = TRUE,
 #' @param n Number of points in the smooth curve grid.
 #' @param digits Rounding used in the turning-point labels.
 #' @param xlab,ylab,main Plot labels; default sensibly if left `NULL`.
+#' @param extrapolated If `TRUE` (default), a turning point outside the
+#'   observed `x` range is still drawn -- the curve is extended (dashed)
+#'   just far enough to show it. If `FALSE`, the curve stops at the
+#'   observed data and such a turning point is left off the plot entirely
+#'   (it is still in the returned data frame either way -- this only
+#'   controls what gets drawn).
 #' @param ... Passed on to the underlying [plot()] call.
 #' @return Invisibly, the turning-point data (see [turning_points.pcpr()]).
 #' @export
 plot.pcpr <- function(x, y = NULL, n = 200, digits = 3,
-                       xlab = NULL, ylab = "prediction", main = NULL, ...) {
+                       xlab = NULL, ylab = "prediction", main = NULL,
+                       extrapolated = TRUE, ...) {
   object <- x
   if (identical(object$type, "PMG")) {
-    plot_pcpr_pmg(object, n = n, digits = digits, xlab = xlab, ylab = ylab, main = main, ...)
+    plot_pcpr_pmg(object, n = n, digits = digits, xlab = xlab, ylab = ylab, main = main,
+                  extrapolated = extrapolated, ...)
   } else {
-    plot_pcpr_mg(object, n = n, digits = digits, xlab = xlab, ylab = ylab, main = main, ...)
+    plot_pcpr_mg(object, n = n, digits = digits, xlab = xlab, ylab = ylab, main = main,
+                 extrapolated = extrapolated, ...)
   }
 }
 
 #' @keywords internal
-plot_pcpr_mg <- function(object, n, digits, xlab, ylab, main, ...) {
+plot_pcpr_mg <- function(object, n, digits, xlab, ylab, main, extrapolated = TRUE, ...) {
   unit_fits <- object$unit_fits
   xname <- colnames(unit_fits[[1]]$x)[1]
   powers1 <- unit_fits[[1]]$fit$powers[[1]]
@@ -149,7 +178,7 @@ plot_pcpr_mg <- function(object, n, digits, xlab, ylab, main, ...) {
   const_mg <- get_level_offset(object$coefficients, pooled_w(unit_fits))
 
   tp <- mg_turning_points(object)
-  xr_full <- extend_range_for_points(xr_data, tp$x)
+  xr_full <- if (extrapolated) extend_range_for_points(xr_data, tp$x) else xr_data
 
   grid <- sort(unique(c(seq(xr_full[1], xr_full[2], length.out = n), xr_data)))
   curve_y <- const_mg + as.numeric(gen_power_reg(grid, powers1) %*% beta_mg)
@@ -158,12 +187,12 @@ plot_pcpr_mg <- function(object, n, digits, xlab, ylab, main, ...) {
   if (is.null(main)) main <- "Turning point analysis (mean group)"
   graphics::plot(grid, curve_y, type = "n", xlab = xlab, ylab = ylab, main = main, ...)
   draw_curve(grid, curve_y, xr_data)
-  draw_turning_points(tp, digits = digits)
+  draw_turning_points(filter_drawable_tp(tp, extrapolated), digits = digits)
   invisible(tp)
 }
 
 #' @keywords internal
-plot_pcpr_pmg <- function(object, n, digits, xlab, ylab, main, ...) {
+plot_pcpr_pmg <- function(object, n, digits, xlab, ylab, main, extrapolated = TRUE, ...) {
   fit <- object$unit_fits
   powers1 <- seq_len(fit$q)
   beta <- unname(object$coefficients[paste0("x1^", powers1)])
@@ -171,7 +200,7 @@ plot_pcpr_pmg <- function(object, n, digits, xlab, ylab, main, ...) {
 
   xr_data <- range(unlist(lapply(fit$unit_info, function(u) u$x)))
   tp <- pmg_turning_points(object)
-  xr_full <- extend_range_for_points(xr_data, tp$x)
+  xr_full <- if (extrapolated) extend_range_for_points(xr_data, tp$x) else xr_data
 
   grid <- sort(unique(c(seq(xr_full[1], xr_full[2], length.out = n), xr_data)))
   curve_y <- const + as.numeric(gen_power_reg(grid, powers1) %*% beta)
@@ -180,7 +209,7 @@ plot_pcpr_pmg <- function(object, n, digits, xlab, ylab, main, ...) {
   if (is.null(main)) main <- "Turning point analysis (pooled panel)"
   graphics::plot(grid, curve_y, type = "n", xlab = xlab, ylab = ylab, main = main, ...)
   draw_curve(grid, curve_y, xr_data)
-  draw_turning_points(tp, digits = digits)
+  draw_turning_points(filter_drawable_tp(tp, extrapolated), digits = digits)
   invisible(tp)
 }
 

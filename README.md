@@ -219,14 +219,19 @@ further estimators and a panel version can be added later.
   - `plot(fit)`: draws the fitted curve (`cpr`: with the observed data
     scatter; `pcpr(type = "mg")`: the group-mean curve only; `pcpr(type =
     "pmg")`: the single pooled curve) with turning point(s) marked and
-    labeled, and invisibly returns the same data `turning_points()` would.
-    An exterior turning point is never hidden: the curve is extended just
-    far enough to reach it, drawn dashed beyond the observed data (solid
-    within it) so the extrapolated part reads as projection rather than
-    observed relationship, and its label/marker are colored differently
-    ("... (extrapolated)", orange instead of red) -- see the pooled-panel
+    labeled, and invisibly returns the same data `turning_points()` would
+    (unaffected by anything below -- it's always the complete data, exterior
+    points included). By default (`extrapolated = TRUE`), an exterior
+    turning point is never hidden: the curve is extended just far enough
+    to reach it, drawn dashed beyond the observed data (solid within it)
+    so the extrapolated part reads as projection rather than observed
+    relationship, and its label/marker are colored differently ("...
+    (extrapolated)", orange instead of red) -- see the pooled-panel
     (`pmg`) example, where the common-slope vertex commonly falls outside
-    every unit's own data. For a single fit (`cpr`, not the panel types),
+    every unit's own data. Pass `extrapolated = FALSE` to opt back out:
+    the curve then stops at the observed data and an exterior turning
+    point is left off the plot entirely (it's still in the returned data
+    frame -- this only controls what gets drawn). For a single fit (`cpr`, not the panel types),
     `plot(fit, id = "Hungary")` appends a cosmetic label to the title
     (`"Turning point analysis - Hungary"`) -- purely for identifying which
     unit a one-off plot is for; it doesn't affect the fit or the returned
@@ -334,10 +339,13 @@ confirming it gives identical fits to the vector interface, then runs
 points for Czechia alone, the mean-group panel, and the pooled panel --
 including the pooled case's extrapolated turning point (its common-slope
 curve's vertex falls outside every country's observed GNIPC range in this
-data, `interior = FALSE`), which is still reported and still drawn --
-dashed, past the last observed data point, with an "(extrapolated)" label
--- rather than silently omitted. Writes PNGs into `examples/` (not tracked
-by git; see `.gitignore`) since it's meant to run headlessly.
+data, `interior = FALSE`), which `turning_points()` always reports and
+`plot()` draws by default -- dashed, past the last observed data point,
+with an "(extrapolated)" label -- and a second pooled-panel plot with
+`extrapolated = FALSE`, showing the same turning point left off the plot
+(curve stops at the data) while the returned data is unchanged. Writes
+PNGs into `examples/` (not tracked by git; see `.gitignore`) since it's
+meant to run headlessly.
 
 `examples/example_pcpr_pmg.R` fits the pooled panel model (`type = "pmg"`)
 on the same CEE panel, both `oneway` and `twoway`, and compares its
@@ -414,10 +422,12 @@ regressor `w`'s HAC standard errors reuse the single bandwidth resolved
 from `[u_ols, Delta(x)]` rather than a freshly-resolved one (the bandwidth
 port bug described above), that `turning_points()`/`plot()` include a
 stationary regressor `w`'s contribution at `w`'s own mean rather than
-implicitly at `w = 0`, and that a turning point outside the observed
-x-range is still reported (flagged `interior = FALSE`, not dropped) and
-still actually drawn on the plot -- extended (dashed) past the observed
-data rather than silently omitted.
+implicitly at `w = 0`, that a turning point outside the observed
+x-range is still reported (flagged `interior = FALSE`, not dropped) and,
+by default, actually drawn on the plot -- extended (dashed) past the
+observed data rather than silently omitted -- and that
+`plot(..., extrapolated = FALSE)` leaves such a turning point off the
+plot instead, without changing the data `turning_points()` returns.
 
 ### A cross-platform bug this port found and fixed
 

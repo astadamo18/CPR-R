@@ -71,14 +71,21 @@ print(turning_points(fit_pmg))
 ## interior = FALSE here: the pooled model's single common-slope curve has
 ## its vertex outside the observed GNIPC range for every country -- a real
 ## finding (this data does not support a common EKC-style turning point
-## under full slope pooling), not a bug, and it's still reported (not
-## dropped) and still plotted, dashed past the last observed data point
-## with an "(extrapolated)" label, rather than silently disappearing. The
-## pooled model also has no single estimated constant (fixed effects
-## absorb it); the curve/label instead use the average, across countries,
-## of each one's own implied fixed effect -- see the file-level comment in
-## R/turning-points.R.
+## under full slope pooling), not a bug. turning_points() always reports
+## it either way; plot()'s `extrapolated` argument (default TRUE) controls
+## whether it also gets *drawn* -- dashed past the last observed data
+## point with an "(extrapolated)" label -- or left off the plot with
+## `extrapolated = FALSE`, while the returned data is identical either
+## way. The pooled model also has no single estimated constant (fixed
+## effects absorb it); the curve/label instead use the average, across
+## countries, of each one's own implied fixed effect -- see the
+## file-level comment in R/turning-points.R.
 grDevices::png("examples/turning_points_pmg.png", width = 800, height = 600)
 plot(fit_pmg)
 grDevices::dev.off()
 cat("Wrote examples/turning_points_pmg.png\n")
+
+grDevices::png("examples/turning_points_pmg_no_extrap.png", width = 800, height = 600)
+plot(fit_pmg, extrapolated = FALSE)
+grDevices::dev.off()
+cat("Wrote examples/turning_points_pmg_no_extrap.png (turning point left off the plot, curve stops at the data)\n")
